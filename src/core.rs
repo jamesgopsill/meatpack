@@ -140,8 +140,10 @@ pub fn lookup_byte(byte: &u8, no_spaces: bool) -> Result<u8, MeatPackError> {
 /// Utility function that accepts a `u8` and prints the utf8 [0-255] chars which includes the ASCII table.
 pub fn print_ascii(bytes: &[u8]) {
     for b in bytes {
-        let c = char::try_from(*b).unwrap();
-        print!("{}", c);
+        if *b != 0 {
+            let c = char::try_from(*b).unwrap();
+            print!("{}", c);
+        }
     }
     println!();
 }

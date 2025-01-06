@@ -4,11 +4,11 @@ version = "0.0.1"
 edition = "2021"
 
 [features]
-default = ["no_std"]
-std = []
-no_std = []
+default = ["std"]
+# no_std_io provides pass-through to std to simplify imports
+std = ["no_std_io/std"]
+# no_std requires nightly for no_std_io BufReader.
+no_std = ["no_std_io/nightly"]
 
 [dependencies]
-no_std_io = { version = "0.6.0", default_features = false, features = [
-	"nightly",
-] }
+no_std_io = { version = "0.6.0", default_features = false }

@@ -1,7 +1,4 @@
-#[cfg(feature = "no_std")]
 use no_std_io::io::{BufReader, Read, Result, Seek, SeekFrom};
-#[cfg(feature = "std")]
-use std::io::{BufReader, Read, Result, Seek, SeekFrom};
 
 use super::unpacked_lines::UnpackedLines;
 

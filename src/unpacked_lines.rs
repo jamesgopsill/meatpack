@@ -1,7 +1,4 @@
-#[cfg(feature = "no_std")]
 use no_std_io::io::{BufReader, Read};
-#[cfg(feature = "std")]
-use std::io::{BufReader, Read};
 
 use crate::core::{
     determine_command, is_linefeed_byte, is_signal_byte, unpack_byte, MeatPackCommand,
@@ -77,7 +74,7 @@ impl<'a, R: Read> UnpackedLines<'a, R> {
         }
     }
 
-    // Handles the unpacking of a byte
+    /// Handles the unpacking of a byte
     fn handle_unpacking(&mut self, byte: u8) -> Result<(u8, u8), MeatPackError> {
         let (upper, lower) = unpack_byte(&byte, self.no_spaces_enabled)?;
 
@@ -102,11 +99,13 @@ impl<'a, R: Read> UnpackedLines<'a, R> {
         return Err(MeatPackError::InvalidByte);
     }
 
+    /// Clears and resets the buffer location
     fn clear_buffer(&mut self) {
         self.buffer.fill(0);
         self.buffer_pos = 0;
     }
 
+    /// Pushed a byte to the buffer.
     fn push_buffer(&mut self, byte: u8) -> Result<(), MeatPackError> {
         if self.buffer_pos > 127 {
             return Err(MeatPackError::BufferFull);

@@ -1,9 +1,6 @@
-// 'no_std' feature
 use no_std_io::io::BufReader;
-// Or if using 'std' feature
-// use std::io::BufReader;
 
-use meatpack::unpacker::Unpacker;
+use meatpack::{core::print_ascii, unpacker::Unpacker};
 
 /*
 Should unpack to:
@@ -29,7 +26,7 @@ fn main() {
     let lines = unpacker.lines();
     for line in lines {
         match line {
-            Ok(line) => println!("{:?}", &line),
+            Ok(line) => print_ascii(&line),
             Err(e) => println!("{:?}", e),
         }
     }
