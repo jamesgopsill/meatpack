@@ -1,12 +1,19 @@
 //! Core functions for MeatPack.
 use no_std_io::io::Error;
 
+pub static SIGNAL_BYTE: u8 = 255;
+pub static ENABLE_PACKING_BYTE: u8 = 251;
+pub static LINEFEED_BYTE: u8 = 10;
+
 /// A set of possible error codes from the MeatPack crate.
 #[derive(Debug)]
 pub enum MeatPackError {
+	IntoInnerError,
 	InvalidByte,
 	InvalidCommandByte,
 	BufferFull,
+	FullWidthByte,
+	LineTooSmallToPack,
 	IOError(Error),
 }
 
@@ -69,10 +76,10 @@ pub fn unpack_byte(
 	// 4-bits still exist within a u8.
 	let mut unpacked: (u8, u8) = (0, 0);
 	let upper = byte >> 4;
-	let u = lookup_byte(&upper, no_spaces)?;
+	let u = reverse_lookup(&upper, no_spaces)?;
 	unpacked.0 = u;
 	let lower = byte << 4 >> 4;
-	let u = lookup_byte(&lower, no_spaces)?;
+	let u = reverse_lookup(&lower, no_spaces)?;
 	unpacked.1 = u;
 	Ok(unpacked)
 }
@@ -101,7 +108,7 @@ pub fn unpack_byte(
 /// References
 /// - <https://github.com/prusa3d/libbgcode/blob/main/src/LibBGCode/binarize/meatpack.cpp>
 /// - <https://www.asciitable.com/>
-pub fn lookup_byte(
+pub fn reverse_lookup(
 	byte: &u8,
 	no_spaces: bool,
 ) -> Result<u8, MeatPackError> {
@@ -129,6 +136,44 @@ pub fn lookup_byte(
 		0b1110 => Ok(88),
 		0b1111 => Ok(0),
 		_ => Err(MeatPackError::InvalidByte),
+	}
+}
+
+/// The forward lookup variant of the reverse lookup byte.
+pub fn forward_lookup(
+	byte: &u8,
+	no_spaces: bool,
+) -> Result<u8, MeatPackError> {
+	match byte {
+		48 => Ok(0b0000),
+		49 => Ok(0b0001),
+		50 => Ok(0b0010),
+		51 => Ok(0b0011),
+		52 => Ok(0b0100),
+		53 => Ok(0b0101),
+		54 => Ok(0b0110),
+		55 => Ok(0b0111),
+		56 => Ok(0b1000),
+		57 => Ok(0b1001),
+		46 => Ok(0b1010),
+		69 => {
+			if no_spaces {
+				Ok(0b1011)
+			} else {
+				Err(MeatPackError::FullWidthByte)
+			}
+		}
+		32 => {
+			if no_spaces {
+				Err(MeatPackError::FullWidthByte)
+			} else {
+				Ok(0b1011)
+			}
+		}
+		10 => Ok(0b1100),
+		71 => Ok(0b1101),
+		88 => Ok(0b1110),
+		_ => Err(MeatPackError::FullWidthByte),
 	}
 }
 

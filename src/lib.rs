@@ -2,7 +2,8 @@
 #![cfg_attr(feature = "no_std", no_std)]
 
 pub mod core;
-//pub mod _unpacked_lines;
-pub mod unpacker;
+mod packer;
+mod unpacker;
 
+pub use packer::Packer;
 pub use unpacker::Unpacker;

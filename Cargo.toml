@@ -4,7 +4,7 @@ version = "0.0.1"
 edition = "2021"
 
 [features]
-default = ["no_std"]
+default = ["std"]
 # no_std_io provides pass-through to std to simplify imports
 std = ["no_std_io/std"]
 # no_std requires nightly for no_std_io BufReader.

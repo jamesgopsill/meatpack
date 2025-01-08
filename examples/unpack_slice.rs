@@ -24,14 +24,14 @@ fn main() {
 		33, 0, 255, 32, 84, 4, 0,
 	];
 	let reader = BufReader::new(packed.as_slice());
-	// Specify an unpacker with a specify buffer (B) and no_std_io bufreader size (S).
-	// N.b. no_std_io bufreader size (S) ignored when in std mode.
-	let mut unpacker = Unpacker::<128, 64, _>::new(reader);
+	// Specify an unpacker with a specify output buffer (O) and no_std_io bufreader size (I).
+	// N.b. no_std_io bufreader size (I) ignored when in std mode.
+	let mut unpacker = Unpacker::<64, 128, _>::new(reader);
 	while let Some(line) = unpacker.unpack_line() {
 		match line {
 			Ok(line) => {
 				#[cfg(feature = "std")]
-				print_ascii(&line);
+				print_ascii(line);
 				#[cfg(feature = "no_std")]
 				println!("{:?}", &line);
 			}

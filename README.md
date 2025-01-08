@@ -1,6 +1,16 @@
 # Meatpack
 
-**[Under Construction]** A pure Rust implementation of Scott Mudge's [MeatPack](https://github.com/scottmudge/OctoPrint-MeatPack) algorithm. I intend for the crate to provide libraries for both `std` and `no_std` environments, a CLI application and bindings for other languages.
+**[Under Construction]** A pure Rust implementation of Scott Mudge's [MeatPack](https://github.com/scottmudge/OctoPrint-MeatPack) algorithm. The crate works in both `std` and `no_std` environments, and features a CLI application. Bindings for other languages are in the pipeline. The `no_std` option is configurable allowing you to set it up according to your embedded system resource constraints.
+
+# Support
+
+Please consider supporting the crate by:
+
+- Downloading and using the crate.
+- Raising issues and improvements on the GitHub repo.
+- Recommending the crate to others.
+- ⭐ the crate on GitHub.
+- Sponsoring the [maintainer](https://github.com/sponsors/jamesgopsill).
 
 ## The Algorithm
 
@@ -86,6 +96,7 @@ fn main() {
     }
 }
 ```
+
 
 # References
 

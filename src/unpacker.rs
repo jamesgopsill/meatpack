@@ -5,40 +5,37 @@ use crate::core::{
 	MeatPackError,
 };
 
-/// A struct that can unpack meatpack packed gcode.
-pub struct Unpacker<const B: usize, const S: usize, R> {
+/// A struct that can unpack meatpack packed gcode where I and O are generic constants that can be specified to size the Input Bufreader buffer and
+pub struct Unpacker<const I: usize, const O: usize, R> {
 	unpacking_enabled: bool,
 	no_spaces_enabled: bool,
 	buffer_pos: usize,
-	buffer: [u8; B],
-	overflow: u8,
+	buffer: [u8; O],
 	#[cfg(feature = "std")]
 	reader: BufReader<R>,
 	#[cfg(feature = "no_std")]
-	reader: BufReader<R, S>,
+	reader: BufReader<R, I>,
 }
 
-impl<const B: usize, const S: usize, R: Read> Unpacker<B, S, R> {
+impl<const I: usize, const O: usize, R: Read> Unpacker<I, O, R> {
 	#[cfg(feature = "std")]
 	pub fn new(reader: BufReader<R>) -> Self {
 		Self {
 			unpacking_enabled: false,
 			no_spaces_enabled: false,
 			buffer_pos: 0,
-			buffer: [0; B],
-			overflow: 0,
+			buffer: [0; O],
 			reader,
 		}
 	}
 
 	#[cfg(feature = "no_std")]
-	pub fn new(reader: BufReader<R, S>) -> Self {
+	pub fn new(reader: BufReader<R, I>) -> Self {
 		Self {
 			unpacking_enabled: false,
 			no_spaces_enabled: false,
 			buffer_pos: 0,
-			buffer: [0; B],
-			overflow: 0,
+			buffer: [0; O],
 			reader,
 		}
 	}
@@ -111,12 +108,6 @@ impl<const B: usize, const S: usize, R: Read> Unpacker<B, S, R> {
 	fn clear_buffer(&mut self) {
 		self.buffer.fill(0);
 		self.buffer_pos = 0;
-		// Check whether the overflow has a byte
-		// to start the next line.
-		if self.overflow != 0 {
-			self.buffer[self.buffer_pos] = self.overflow;
-			self.overflow = 0;
-		}
 	}
 
 	/// Pushed a byte to the buffer.
@@ -142,7 +133,7 @@ impl<const B: usize, const S: usize, R: Read> Unpacker<B, S, R> {
 	///     }
 	/// }
 	/// ```
-	pub fn unpack_line(&mut self) -> Option<Result<&[u8; B], MeatPackError>> {
+	pub fn unpack_line(&mut self) -> Option<Result<&[u8; O], MeatPackError>> {
 		self.clear_buffer();
 
 		while let Ok(byte) = self.read_one_byte() {
@@ -173,12 +164,13 @@ impl<const B: usize, const S: usize, R: Read> Unpacker<B, S, R> {
 						// Pass-through two;
 						false => {
 							if is_linefeed_byte(&left) {
-								// Check if right is a useful byte
-								// and set in the overflow.
+								// Right should also be \n to meet the \n\n
+								// expectation.
+								// Otherwise we have invalid meatpack gcode.
 								if !is_linefeed_byte(&right) {
-									self.overflow = right;
+									return Some(Ok(&self.buffer));
 								}
-								return Some(Ok(&self.buffer));
+								return Some(Err(MeatPackError::InvalidByte));
 							} else {
 								if let Err(e) = self.push_buffer(left) {
 									return Some(Err(e));
@@ -199,10 +191,13 @@ impl<const B: usize, const S: usize, R: Read> Unpacker<B, S, R> {
 					true => match self.handle_unpacking(byte) {
 						Ok((left, right)) => {
 							if is_linefeed_byte(&left) {
+								// Right should also be \n to meet the \n\n
+								// expectation.
+								// Otherwise we have invalid meatpack gcode.
 								if !is_linefeed_byte(&right) {
-									self.overflow = right;
+									return Some(Ok(&self.buffer));
 								}
-								return Some(Ok(&self.buffer));
+								return Some(Err(MeatPackError::InvalidByte));
 							} else {
 								if let Err(e) = self.push_buffer(left) {
 									return Some(Err(e));
