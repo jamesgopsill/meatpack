@@ -1,20 +1,17 @@
-//! Core functions for MeatPack.
-use no_std_io::io::Error;
-
 pub static SIGNAL_BYTE: u8 = 255;
-pub static ENABLE_PACKING_BYTE: u8 = 251;
+pub static PACKING_ENABLED_BYTE: u8 = 251;
 pub static LINEFEED_BYTE: u8 = 10;
+//pub static COMMENT_START_BYTE: u8 = 59;
 
 /// A set of possible error codes from the MeatPack crate.
 #[derive(Debug)]
 pub enum MeatPackError {
-	IntoInnerError,
+	EmptySlice,
 	InvalidByte,
 	InvalidCommandByte,
 	BufferFull,
 	FullWidthByte,
 	LineTooSmallToPack,
-	IOError(Error),
 }
 
 /// An enum detailing all the available Meatpack commands.
@@ -175,16 +172,4 @@ pub fn forward_lookup(
 		88 => Ok(0b1110),
 		_ => Err(MeatPackError::FullWidthByte),
 	}
-}
-
-#[cfg(feature = "std")]
-/// Utility function that accepts a `u8` and prints the utf8 [0-255] chars which includes the ASCII table.
-pub fn print_ascii(bytes: &[u8]) {
-	for b in bytes {
-		if *b != 0 {
-			let c = char::from(*b);
-			print!("{}", c);
-		}
-	}
-	println!();
 }

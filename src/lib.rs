@@ -1,9 +1,9 @@
 #![doc = include_str!("../README.md")]
-#![cfg_attr(feature = "no_std", no_std)]
+#![no_std]
 
-pub mod core;
-mod packer;
-mod unpacker;
+mod meat;
+mod pack;
+mod unpack;
 
-pub use packer::Packer;
-pub use unpacker::Unpacker;
+pub use pack::Pack;
+pub use unpack::Unpack;

@@ -1,51 +1,28 @@
-use no_std_io::io::{BufReader, Read};
+use core::slice::Iter;
 
-use crate::core::{
+use crate::meat::{
 	determine_command, is_linefeed_byte, is_signal_byte, unpack_byte, MeatPackCommand,
 	MeatPackError,
 };
 
 /// A struct that can unpack meatpack packed gcode where I and O are generic constants that can be specified to size the Input Bufreader buffer and
-pub struct Unpacker<const I: usize, const O: usize, R> {
+pub struct Unpack<'a, const S: usize> {
 	unpacking_enabled: bool,
 	no_spaces_enabled: bool,
 	buffer_pos: usize,
-	buffer: [u8; O],
-	#[cfg(feature = "std")]
-	reader: BufReader<R>,
-	#[cfg(feature = "no_std")]
-	reader: BufReader<R, I>,
+	buffer: [u8; S],
+	iter: Iter<'a, u8>,
 }
 
-impl<const I: usize, const O: usize, R: Read> Unpacker<I, O, R> {
-	#[cfg(feature = "std")]
-	pub fn new(reader: BufReader<R>) -> Self {
+impl<'a, const S: usize> Unpack<'a, S> {
+	pub fn new(slice: &'a [u8]) -> Self {
+		let iter = slice.iter();
 		Self {
 			unpacking_enabled: false,
 			no_spaces_enabled: false,
 			buffer_pos: 0,
-			buffer: [0; O],
-			reader,
-		}
-	}
-
-	#[cfg(feature = "no_std")]
-	pub fn new(reader: BufReader<R, I>) -> Self {
-		Self {
-			unpacking_enabled: false,
-			no_spaces_enabled: false,
-			buffer_pos: 0,
-			buffer: [0; O],
-			reader,
-		}
-	}
-
-	/// Reads a single byte from the reader
-	fn read_one_byte(&mut self) -> Result<u8, MeatPackError> {
-		let mut byte: [u8; 1] = [0];
-		match self.reader.read_exact(&mut byte) {
-			Ok(_) => Ok(byte[0]),
-			Err(e) => Err(MeatPackError::IOError(e)),
+			buffer: [0; S],
+			iter,
 		}
 	}
 
@@ -79,9 +56,9 @@ impl<const I: usize, const O: usize, R: Read> Unpacker<I, O, R> {
 	/// Handles the unpacking of a byte
 	fn handle_unpacking(
 		&mut self,
-		byte: u8,
+		byte: &u8,
 	) -> Result<(u8, u8), MeatPackError> {
-		let (upper, lower) = unpack_byte(&byte, self.no_spaces_enabled)?;
+		let (upper, lower) = unpack_byte(byte, self.no_spaces_enabled)?;
 
 		// If they are both unpacked characters.
 		if upper != 0 && lower != 0 {
@@ -90,14 +67,20 @@ impl<const I: usize, const O: usize, R: Read> Unpacker<I, O, R> {
 
 		// If lower contains 0b1111
 		if lower == 0 {
-			let fullwidth_byte = self.read_one_byte()?;
-			return Ok((fullwidth_byte, upper));
+			if let Some(fullwidth_byte) = self.iter.next() {
+				return Ok((*fullwidth_byte, upper));
+			} else {
+				return Err(MeatPackError::EmptySlice);
+			}
 		}
 
 		// If upper contains 0b1111
 		if upper == 0 {
-			let fullwidth_byte = self.read_one_byte()?;
-			return Ok((lower, fullwidth_byte));
+			if let Some(fullwidth_byte) = self.iter.next() {
+				return Ok((lower, *fullwidth_byte));
+			} else {
+				return Err(MeatPackError::EmptySlice);
+			}
 		}
 
 		// Should not get here
@@ -113,14 +96,19 @@ impl<const I: usize, const O: usize, R: Read> Unpacker<I, O, R> {
 	/// Pushed a byte to the buffer.
 	fn push_buffer(
 		&mut self,
-		byte: u8,
+		byte: &u8,
 	) -> Result<(), MeatPackError> {
-		if self.buffer_pos > 127 {
+		if self.buffer_pos > S {
 			return Err(MeatPackError::BufferFull);
 		}
-		self.buffer[self.buffer_pos] = byte;
+		self.buffer[self.buffer_pos] = *byte;
 		self.buffer_pos += 1;
 		Ok(())
+	}
+
+	/// Returns a slice of the filled elements in the buffer.
+	fn filled_elements(&mut self) -> &[u8] {
+		&self.buffer[0..self.buffer_pos]
 	}
 
 	/// Yields unpacked lines of gcode.
@@ -133,28 +121,29 @@ impl<const I: usize, const O: usize, R: Read> Unpacker<I, O, R> {
 	///     }
 	/// }
 	/// ```
-	pub fn unpack_line(&mut self) -> Option<Result<&[u8; O], MeatPackError>> {
+	pub fn unpack_line(&mut self) -> Option<Result<&[u8], MeatPackError>> {
 		self.clear_buffer();
 
-		while let Ok(byte) = self.read_one_byte() {
+		while let Some(byte) = self.iter.next() {
 			// Handle the command byte action
-			match is_signal_byte(&byte) {
+			match is_signal_byte(byte) {
 				true => {
 					// Read the next two bytes
-					let left = self.read_one_byte();
-					if left.is_err() {
-						return Some(Err(left.err().unwrap()));
+					let left = self.iter.next();
+					if left.is_none() {
+						return Some(Err(MeatPackError::EmptySlice));
 					}
 					let left = left.unwrap();
-					let right = self.read_one_byte();
-					if right.is_err() {
-						return Some(Err(right.err().unwrap()));
+
+					let right = self.iter.next();
+					if right.is_none() {
+						return Some(Err(MeatPackError::EmptySlice));
 					}
 					let right = right.unwrap();
 
-					match is_signal_byte(&left) {
+					match is_signal_byte(left) {
 						true => {
-							let cmd = determine_command(&right);
+							let cmd = determine_command(right);
 							if cmd.is_err() {
 								return Some(Err(cmd.err().unwrap()));
 							}
@@ -163,20 +152,20 @@ impl<const I: usize, const O: usize, R: Read> Unpacker<I, O, R> {
 						}
 						// Pass-through two;
 						false => {
-							if is_linefeed_byte(&left) {
+							if is_linefeed_byte(left) {
 								// Right should also be \n to meet the \n\n
 								// expectation.
 								// Otherwise we have invalid meatpack gcode.
-								if !is_linefeed_byte(&right) {
-									return Some(Ok(&self.buffer));
+								if !is_linefeed_byte(right) {
+									return Some(Ok(self.filled_elements()));
 								}
 								return Some(Err(MeatPackError::InvalidByte));
 							} else {
 								if let Err(e) = self.push_buffer(left) {
 									return Some(Err(e));
 								};
-								if is_linefeed_byte(&right) {
-									return Some(Ok(&self.buffer));
+								if is_linefeed_byte(right) {
+									return Some(Ok(self.filled_elements()));
 								}
 								if let Err(e) = self.push_buffer(right) {
 									return Some(Err(e));
@@ -195,17 +184,17 @@ impl<const I: usize, const O: usize, R: Read> Unpacker<I, O, R> {
 								// expectation.
 								// Otherwise we have invalid meatpack gcode.
 								if !is_linefeed_byte(&right) {
-									return Some(Ok(&self.buffer));
+									return Some(Ok(self.filled_elements()));
 								}
 								return Some(Err(MeatPackError::InvalidByte));
 							} else {
-								if let Err(e) = self.push_buffer(left) {
+								if let Err(e) = self.push_buffer(&left) {
 									return Some(Err(e));
 								};
 								if is_linefeed_byte(&right) {
-									return Some(Ok(&self.buffer));
+									return Some(Ok(self.filled_elements()));
 								}
-								if let Err(e) = self.push_buffer(right) {
+								if let Err(e) = self.push_buffer(&right) {
 									return Some(Err(e));
 								};
 								continue;
@@ -215,8 +204,8 @@ impl<const I: usize, const O: usize, R: Read> Unpacker<I, O, R> {
 					},
 					// Append the fullwidth character.
 					false => {
-						if is_linefeed_byte(&byte) {
-							return Some(Ok(&self.buffer));
+						if is_linefeed_byte(byte) {
+							return Some(Ok(self.filled_elements()));
 						} else {
 							if let Err(e) = self.push_buffer(byte) {
 								return Some(Err(e));
@@ -229,7 +218,7 @@ impl<const I: usize, const O: usize, R: Read> Unpacker<I, O, R> {
 		}
 		// Empty if the buf is not empty at the end of reading the bytes.
 		if self.buffer[0] > 0 {
-			return Some(Ok(&self.buffer));
+			return Some(Ok(self.filled_elements()));
 		}
 		None
 	}
