@@ -1,4 +1,4 @@
-use meatpack::{Pack, Unpack};
+use meatpack::{is_meatpack_newline, Pack, Unpack};
 
 fn main() {
 	let gcode = "M73 P0 R3
@@ -9,17 +9,23 @@ M204 P4000 R1200 T4000
 ";
 
 	// ## Pack ##
-	// Pack a set of lines
-	let gcode_bytes = gcode.as_bytes();
-	let mut packer = Pack::<100>::new(gcode_bytes);
+	// Create an instance of pack and set the internal buffer to 100 bytes.
+	let mut packer = Pack::<100>::default();
 	let mut packed: Vec<u8> = vec![];
 
 	// Produce the header bytes for meatpack.
 	packed.extend(packer.header());
 
-	// Iterating through a slice of commands and yielding packed bytes.
-	while let Some(line) = packer.pack_next_cmd() {
-		match line {
+	let mut start = 0;
+	let gbytes = gcode.as_bytes();
+	for (i, b) in gbytes.iter().enumerate() {
+		if *b != 10 {
+			continue;
+		}
+		// ASCII LF
+		let slice = &gbytes[start..(i + 1)];
+		start = i + 1;
+		match packer.pack(slice) {
 			Ok(line) => packed.extend(line),
 			Err(e) => {
 				println!("{:?}", e);
@@ -32,69 +38,28 @@ M204 P4000 R1200 T4000
 
 	// ## Unpack ##
 	let mut unpacker = Unpack::<100>::default();
-	let delimiter: u8 = 0b1100;
 	let mut start: usize = 0;
+
+	// Unpacking lines one by one
 	for i in 0..packed.len() {
-		let b = packed[i] >> 4;
-		if b == delimiter {
-			let slice = &packed[start..=i];
-			let cmd = unpacker.unpack(slice);
-			match cmd {
-				Ok(cmd) => {
-					// If in std.
-					for byte in cmd {
-						let c = char::from(*byte);
-						print!("{}", c);
-					}
+		if !is_meatpack_newline(&packed[i]) {
+			continue;
+		}
+
+		// meatpack new line found.
+		let slice = &packed[start..=i];
+		let cmd = unpacker.unpack(slice);
+		match cmd {
+			Ok(cmd) => {
+				// If in std.
+				for byte in cmd {
+					let c = char::from(*byte);
+					print!("{}", c);
 				}
-				Err(e) => println!("{:?}", e),
 			}
-			start = i + 1;
+			Err(e) => println!("{:?}", e),
 		}
+
+		start = i + 1;
 	}
 }
-
-/*
-
-println!("{}", gcode);
-
-let gcode_bytes = gcode.as_bytes();
-let mut packer = Pack::<100>::new(gcode_bytes);
-let mut packed: Vec<u8> = Vec::new();
-
-// Add the header.
-packed.extend(packer.header());
-
-// Pack the lines
-while let Some(line) = packer.pack_next_cmd() {
-	match line {
-		Ok(line) => packed.extend(line),
-		Err(e) => println!("{:?}", e),
-	}
-}
-
-// Now read the packed vec.
-println!("{:?}", packed);
-
-let mut unpacked: Vec<u8> = Vec::new();
-let mut unpacker = Unpack::<100>::new(packed.as_slice());
-
-while let Some(line) = unpacker.unpack_cmd() {
-	match line {
-		Ok(line) => {
-			unpacked.extend(line);
-			unpacked.push(10); // linefeed byte
-		}
-		Err(e) => println!("{:?}", e),
-	}
-}
-
-println!("{:?}", unpacked);
-
-// If in std.
-for byte in unpacked {
-	let c = char::from(byte);
-	print!("{}", c);
-}
-println!();
-*/

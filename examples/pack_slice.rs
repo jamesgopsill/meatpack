@@ -1,4 +1,4 @@
-use meatpack::{pack_cmd, Pack};
+use meatpack::Pack;
 
 fn main() {
 	let gcode = "M73 P0 R3
@@ -8,45 +8,28 @@ M203 X300 Y300 Z40 E100
 M204 P4000 R1200 T4000
 ";
 
-	// Pack a set of lines
-	let gcode_bytes = gcode.as_bytes();
-	let mut packer = Pack::<100>::new(gcode_bytes);
+	// Create an instance of pack and set the internal buffer to 100 bytes.
+	let mut packer = Pack::<100>::default();
 
 	// Produce the header bytes for meatpack.
 	println!("{:?}", packer.header());
 
-	// Iterating through a slice of commands and yielding packed bytes.
-	while let Some(line) = packer.pack_next_cmd() {
-		match line {
+	let mut start = 0;
+	let gbytes = gcode.as_bytes();
+	for (i, b) in gbytes.iter().enumerate() {
+		if *b != 10 {
+			continue;
+		}
+		// ASCII LF
+		let slice = &gbytes[start..(i + 1)];
+		start = i + 1;
+		match packer.pack(slice) {
 			Ok(line) => {
 				println!("{:?}", line);
 			}
 			Err(e) => {
 				println!("{:?}", e);
 				break;
-			}
-		}
-	}
-
-	// Or using the function directly for per line packing.
-	let mut start = 0;
-	let mut i = 0;
-	let gbytes = gcode.as_bytes();
-	for b in gbytes {
-		i += 1;
-		if *b == 10 {
-			let input = &gbytes[start..i];
-			start = i;
-			let mut out = [0u8; 100];
-			let res = pack_cmd(input, &mut out);
-			match res {
-				Ok((_, written)) => {
-					println!("{:?}", &out[0..written]);
-				}
-				Err(e) => {
-					println!("{:?}", e);
-					break;
-				}
 			}
 		}
 	}

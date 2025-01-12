@@ -101,48 +101,43 @@ pub fn pack_cmd<'a, const S: usize>(
 	Err(MeatPackError::LineFeedMissing)
 }
 
-/// A utility struct for packing a long series of gcode commands
-/// that wraps around the core `pack_cmd` function.
-pub struct Pack<'a, const S: usize> {
-	pos: usize,
-	slice: &'a [u8],
+/// A utility struct for that wraps around the
+/// core `pack_cmd` function and provides a
+/// managed buffer.
+pub struct Pack<const S: usize> {
 	buffer: [u8; S],
 }
 
-impl<'a, const S: usize> Pack<'a, S> {
-	/// Create a new instance of Pack.
-	pub fn new(slice: &'a [u8]) -> Self {
-		Self {
-			pos: 0,
-			slice,
-			buffer: [0u8; S],
-		}
+impl<const S: usize> Default for Pack<S> {
+	fn default() -> Self {
+		Self { buffer: [0u8; S] }
 	}
+}
 
+impl<const S: usize> Pack<S> {
 	/// Return a header that needs to be place at the start of
 	/// a meatpacked gcode stream.
 	pub fn header(&self) -> [u8; 3] {
 		[SIGNAL_BYTE, SIGNAL_BYTE, PACKING_ENABLED_BYTE]
 	}
 
-	/// Packs a line of gcode from the provided slice.
-	pub fn pack_next_cmd(&mut self) -> Option<Result<&[u8], MeatPackError>> {
+	/// Packs a gcode slice. Should be a single gcode line.
+	pub fn pack(
+		&mut self,
+		slice: &[u8],
+	) -> Result<&[u8], MeatPackError> {
 		let buf = &mut self.buffer;
-		let slice = &self.slice[self.pos..];
-		if slice.is_empty() {
-			return None;
-		}
+		buf.fill(0);
 		let packed_cmd = pack_cmd(slice, buf);
 		match packed_cmd {
-			Ok((read, written)) => {
-				self.pos += read;
+			Ok((_, written)) => {
 				let out = &buf[0..written];
 				if written > 0 {
-					return Some(Ok(out));
+					return Ok(out);
 				}
-				None
+				Err(MeatPackError::EmptySlice)
 			}
-			Err(e) => Some(Err(e)),
+			Err(e) => Err(e),
 		}
 	}
 }

@@ -1,6 +1,6 @@
 # Meatpack
 
-**[Under Construction]** A pure Rust implementation of Scott Mudge's [MeatPack](https://github.com/scottmudge/OctoPrint-MeatPack) algorithm. The crate works in both `std` and `no_std` environments, and features a CLI application. Bindings for other languages are in the pipeline. The `no_std` option is configurable allowing you to set it up according to your embedded system resource constraints.
+A pure Rust implementation of Scott Mudge's [MeatPack](https://github.com/scottmudge/OctoPrint-MeatPack) algorithm. The crate works in both `std` and `no_std` environments. A CLI and bindings for other languages are in the pipeline. The library is configurable allowing you to set it up according to your embedded system resource constraints.
 
 # Support
 
@@ -62,38 +62,61 @@ The packed command is now less than **half** the size of the original command.
 # Examples
 
 ```Rust
-use std::io::BufReader;
+use meatpack::{is_meatpack_newline, Pack, Unpack};
 
-use meatpack::{core::print_ascii, unpacker::Unpacker};
-
-/*
-Should unpack to:
-
-;
-M73 P0 R3
-M73 Q0 S3
+fn main() {
+	let gcode = "M73 P0 R3
+M73 Q0 S3 ; Hello
 M201 X4000 Y4000 Z200 E2500
 M203 X300 Y300 Z40 E100
 M204 P4000 R1200 T4000
+";
 
-*/
-fn main() {
-    let packed: Vec<u8> = vec![
-        255, 255, 251, 255, 255, 247, 255, 255, 250, 59, 32, 10, 255, 255, 251, 127, 77, 243, 32,
-        15, 80, 255, 32, 82, 195, 127, 77, 243, 32, 15, 81, 255, 32, 83, 195, 47, 77, 16, 239, 32,
-        4, 0, 255, 32, 89, 4, 0, 255, 32, 90, 2, 240, 32, 43, 5, 192, 47, 77, 48, 239, 32, 3, 240,
-        32, 63, 89, 0, 255, 32, 90, 4, 191, 32, 1, 192, 47, 77, 64, 255, 32, 80, 4, 0, 255, 32, 82,
-        33, 0, 255, 32, 84, 4, 0,
-    ];
-    let reader = BufReader::new(packed.as_slice());
-    let mut unpacker = Unpacker::new(reader);
-    let lines = unpacker.lines();
-    for line in lines {
-        match line {
-            Ok(line) => print_ascii(&line),
-            Err(e) => println!("{:?}", e),
-        }
-    }
+	// ## Pack ##
+	// Pack a set of lines
+	let gcode_bytes = gcode.as_bytes();
+	// Create an instance of pack and set the internal buffer to 100 bytes.
+	let mut packer = Pack::<100>::new(gcode_bytes);
+	let mut packed: Vec<u8> = vec![];
+
+	// Produce the header bytes for meatpack.
+	packed.extend(packer.header());
+
+	// Iterating through a slice of commands and yielding packed bytes.
+	while let Some(line) = packer.pack_next_cmd() {
+		match line {
+			Ok(line) => packed.extend(line),
+			Err(e) => {
+				println!("{:?}", e);
+				break;
+			}
+		}
+	}
+
+	println!("{:?}", packed);
+
+	// ## Unpack ##
+	let mut unpacker = Unpack::<100>::default();
+	let mut start: usize = 0;
+
+	// Unpacking lines one by one
+	for i in 0..packed.len() {
+		if is_meatpack_newline(&packed[i]) {
+			let slice = &packed[start..=i];
+			let cmd = unpacker.unpack(slice);
+			match cmd {
+				Ok(cmd) => {
+					// If in std.
+					for byte in cmd {
+						let c = char::from(*byte);
+						print!("{}", c);
+					}
+				}
+				Err(e) => println!("{:?}", e),
+			}
+			start = i + 1;
+		}
+	}
 }
 ```
 

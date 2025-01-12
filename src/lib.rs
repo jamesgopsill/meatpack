@@ -6,5 +6,6 @@ mod meat;
 mod pack;
 mod unpack;
 
+pub use meat::is_meatpack_newline;
 pub use pack::{pack_cmd, Pack};
 pub use unpack::Unpack;

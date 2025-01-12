@@ -3,15 +3,6 @@ pub static PACKING_ENABLED_BYTE: u8 = 251;
 pub static LINEFEED_BYTE: u8 = 10;
 pub static COMMENT_START_BYTE: u8 = 59;
 
-/*
-#[derive(Debug)]
-pub enum MeatPackChecksum {
-	None,
-	// XOR,
-	// TODO: CRC16,
-}
-*/
-
 /// A set of possible error codes from the MeatPack crate.
 #[derive(Debug)]
 pub enum MeatPackError {
@@ -183,4 +174,9 @@ pub fn forward_lookup(
 		88 => Ok(0b1110),
 		_ => Err(MeatPackError::FullWidthByte),
 	}
+}
+
+/// Detects whether the packed `u8` contains a newline.
+pub fn is_meatpack_newline(byte: &u8) -> bool {
+	byte >> 4 == 0b1100
 }
