@@ -1,134 +1,148 @@
-use core::slice::Iter;
-
-use crate::meat::{
-	forward_lookup, MeatPackError, LINEFEED_BYTE, PACKING_ENABLED_BYTE, SIGNAL_BYTE,
+use crate::{
+	arrwriter::ArrWriter,
+	meat::{
+		forward_lookup, MeatPackError, COMMENT_START_BYTE, LINEFEED_BYTE, PACKING_ENABLED_BYTE,
+		SIGNAL_BYTE,
+	},
 };
 
+/// Packs a single gcode command (i.e., line).
+/// Returns on the first line feed it encounters.
+/// Errors if no LF encountered at the end of the slice.
+/// Strips all comments.
+pub fn pack_cmd<'a, const S: usize>(
+	input: &'a [u8],
+	output: &'a mut [u8; S],
+) -> Result<(usize, usize), MeatPackError> {
+	if input[input.len() - 1] != LINEFEED_BYTE {
+		return Err(MeatPackError::LineFeedMissing);
+	}
+	let mut read: usize = 0;
+	let mut written: usize = 0;
+	let mut iter = input.iter();
+	let mut writer = ArrWriter::new(output);
+	let mut comment_flag = false;
+
+	// Now read in the data from inner.
+	while let Some(byte_one) = iter.next() {
+		read += 1;
+		if *byte_one == COMMENT_START_BYTE {
+			comment_flag = true;
+		}
+		// Check if the byte is \n and the lower is not populated
+		// so we add a \n\n packed byte.
+		if *byte_one == LINEFEED_BYTE {
+			writer.push(&204)?;
+			written += 1;
+			return Ok((read, written));
+		}
+
+		if comment_flag {
+			// Ignore the rest of the line and
+			// waiting to hit \n with the clause above.
+			continue;
+		}
+
+		let mut linefeed_flag = false;
+		let byte_two = iter.next();
+		read += 1;
+		if byte_two.is_none() {
+			return Err(MeatPackError::EmptySlice);
+		}
+		let byte_two = byte_two.unwrap();
+		if *byte_two == LINEFEED_BYTE {
+			linefeed_flag = true;
+		}
+
+		let packed_one = forward_lookup(byte_one, false);
+		let packed_two = forward_lookup(byte_two, false);
+
+		match (packed_one, packed_two) {
+			// Both packable
+			(Ok(lower), Ok(upper)) => {
+				let packed = upper << 4;
+				let packed = packed ^ lower;
+				writer.push(&packed)?;
+				written += 1;
+			}
+			(Ok(lower), Err(_)) => {
+				let upper: u8 = 0b1111;
+				let packed = upper << 4;
+				let packed = packed ^ lower;
+				writer.push(&packed)?;
+				written += 1;
+				writer.push(byte_two)?;
+				written += 1;
+			}
+			(Err(_), Ok(upper)) => {
+				let lower: u8 = 0b1111;
+				let packed = upper << 4;
+				let packed = packed ^ lower;
+				writer.push(&packed)?;
+				written += 1;
+				writer.push(byte_one)?;
+				written += 1;
+			}
+			// Both not packable so needs a signal byte in front
+			(Err(_), Err(_)) => {
+				writer.push(&SIGNAL_BYTE)?;
+				written += 1;
+				writer.push(byte_one)?;
+				written += 1;
+				writer.push(byte_two)?;
+				written += 1;
+			}
+		}
+
+		if linefeed_flag {
+			return Ok((read, written));
+		}
+	}
+	Err(MeatPackError::LineFeedMissing)
+}
+
+/// A utility struct for packing a long series of gcode commands
+/// that wraps around the core `pack_cmd` function.
 pub struct Pack<'a, const S: usize> {
-	buffer_pos: usize,
+	pos: usize,
+	slice: &'a [u8],
 	buffer: [u8; S],
-	iter: Iter<'a, u8>,
 }
 
 impl<'a, const S: usize> Pack<'a, S> {
+	/// Create a new instance of Pack.
 	pub fn new(slice: &'a [u8]) -> Self {
-		let iter = slice.iter();
 		Self {
-			buffer_pos: 0,
-			buffer: [0; S],
-			iter,
+			pos: 0,
+			slice,
+			buffer: [0u8; S],
 		}
 	}
 
-	/// Pushed a byte to the buffer.
-	fn push_buffer(
-		&mut self,
-		byte: &u8,
-	) -> Result<(), MeatPackError> {
-		if self.buffer_pos > S {
-			return Err(MeatPackError::BufferFull);
-		}
-		self.buffer[self.buffer_pos] = *byte;
-		self.buffer_pos += 1;
-		Ok(())
-	}
-
-	/// Clears and resets the buffer location
-	fn clear_buffer(&mut self) {
-		self.buffer.fill(0);
-		self.buffer_pos = 0;
-	}
-
-	/// Returns a slice of the filled elements in the buffer.
-	fn filled_elements(&mut self) -> &[u8] {
-		&self.buffer[0..self.buffer_pos]
-	}
-
+	/// Return a header that needs to be place at the start of
+	/// a meatpacked gcode stream.
 	pub fn header(&self) -> [u8; 3] {
 		[SIGNAL_BYTE, SIGNAL_BYTE, PACKING_ENABLED_BYTE]
 	}
 
-	pub fn pack_line(&mut self) -> Option<Result<&[u8], MeatPackError>> {
-		self.clear_buffer();
-
-		// Now read in the data from inner.
-		while let Some(byte_one) = self.iter.next() {
-			// Check if the byte is \n and the lower is not populated
-			// so we add a \n\n packed byte.
-			if *byte_one == LINEFEED_BYTE {
-				if let Err(e) = self.push_buffer(&204) {
-					return Some(Err(e));
-				};
-				return Some(Ok(self.filled_elements()));
-			}
-
-			let mut linefeed_flag = false;
-			let byte_two = self.iter.next();
-			if byte_two.is_none() {
-				return Some(Err(MeatPackError::EmptySlice));
-			}
-			let byte_two = byte_two.unwrap();
-			if *byte_two == LINEFEED_BYTE {
-				linefeed_flag = true;
-			}
-
-			let packed_one = forward_lookup(byte_one, false);
-			let packed_two = forward_lookup(byte_two, false);
-
-			match (packed_one, packed_two) {
-				// Both packable
-				(Ok(lower), Ok(upper)) => {
-					let packed = upper << 4;
-					let packed = packed ^ lower;
-					if let Err(e) = self.push_buffer(&packed) {
-						return Some(Err(e));
-					};
-				}
-				(Ok(lower), Err(_)) => {
-					let upper: u8 = 0b1111;
-					let packed = upper << 4;
-					let packed = packed ^ lower;
-					if let Err(e) = self.push_buffer(&packed) {
-						return Some(Err(e));
-					};
-					if let Err(e) = self.push_buffer(byte_two) {
-						return Some(Err(e));
-					};
-				}
-				(Err(_), Ok(upper)) => {
-					let lower: u8 = 0b1111;
-					let packed = upper << 4;
-					let packed = packed ^ lower;
-					if let Err(e) = self.push_buffer(&packed) {
-						return Some(Err(e));
-					};
-					if let Err(e) = self.push_buffer(byte_one) {
-						return Some(Err(e));
-					};
-				}
-				// Both not packable so needs a signal byte in front
-				(Err(_), Err(_)) => {
-					if let Err(e) = self.push_buffer(&SIGNAL_BYTE) {
-						return Some(Err(e));
-					};
-					if let Err(e) = self.push_buffer(byte_one) {
-						return Some(Err(e));
-					};
-					if let Err(e) = self.push_buffer(byte_two) {
-						return Some(Err(e));
-					};
-				}
-			}
-
-			if linefeed_flag {
-				return Some(Ok(self.filled_elements()));
-			}
+	/// Packs a line of gcode from the provided slice.
+	pub fn pack_next_cmd(&mut self) -> Option<Result<&[u8], MeatPackError>> {
+		let buf = &mut self.buffer;
+		let slice = &self.slice[self.pos..];
+		if slice.is_empty() {
+			return None;
 		}
-
-		// Empty if the buf is not empty at the end of reading the bytes.
-		if self.buffer[0] > 0 {
-			return Some(Ok(self.filled_elements()));
+		let packed_cmd = pack_cmd(slice, buf);
+		match packed_cmd {
+			Ok((read, written)) => {
+				self.pos += read;
+				let out = &buf[0..written];
+				if written > 0 {
+					return Some(Ok(out));
+				}
+				None
+			}
+			Err(e) => Some(Err(e)),
 		}
-		None
 	}
 }

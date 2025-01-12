@@ -1,17 +1,28 @@
 pub static SIGNAL_BYTE: u8 = 255;
 pub static PACKING_ENABLED_BYTE: u8 = 251;
 pub static LINEFEED_BYTE: u8 = 10;
-//pub static COMMENT_START_BYTE: u8 = 59;
+pub static COMMENT_START_BYTE: u8 = 59;
+
+/*
+#[derive(Debug)]
+pub enum MeatPackChecksum {
+	None,
+	// XOR,
+	// TODO: CRC16,
+}
+*/
 
 /// A set of possible error codes from the MeatPack crate.
 #[derive(Debug)]
 pub enum MeatPackError {
 	EmptySlice,
+	EndOfSlice,
 	InvalidByte,
 	InvalidCommandByte,
 	BufferFull,
 	FullWidthByte,
 	LineTooSmallToPack,
+	LineFeedMissing,
 }
 
 /// An enum detailing all the available Meatpack commands.
