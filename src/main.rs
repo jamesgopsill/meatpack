@@ -40,8 +40,13 @@ fn main() {
 			writer.write_all(&packer.header()).unwrap();
 
 			while reader.read_until(10, &mut buf).is_ok() {
+				if buf.is_empty() {
+					break;
+				}
 				let packed = packer.pack(buf.as_slice()).unwrap();
-				writer.write_all(packed).unwrap();
+				if !packed.is_empty() {
+					writer.write_all(packed).unwrap();
+				}
 				buf.clear();
 			}
 		}

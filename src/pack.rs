@@ -14,6 +14,9 @@ pub fn pack_cmd<'a, const S: usize>(
 	input: &'a [u8],
 	output: &'a mut [u8; S],
 ) -> Result<(usize, usize), MeatPackError> {
+	if input.is_empty() {
+		return Err(MeatPackError::EmptySlice);
+	}
 	if input[input.len() - 1] != LINEFEED_BYTE {
 		return Err(MeatPackError::LineFeedMissing);
 	}
@@ -133,6 +136,10 @@ impl<const S: usize> Pack<S> {
 			Ok((_, written)) => {
 				let out = &buf[0..written];
 				if written > 0 {
+					if written == 1 && buf[0] == 204 {
+						// return an empty slice as it just a \n\n
+						return Ok(&[]);
+					}
 					return Ok(out);
 				}
 				Err(MeatPackError::EmptySlice)

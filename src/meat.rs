@@ -9,6 +9,7 @@ pub enum MeatPackError {
 	EmptySlice,
 	EndOfSlice,
 	InvalidByte,
+	InvalidState,
 	InvalidCommandByte,
 	BufferFull,
 	FullWidthByte,
