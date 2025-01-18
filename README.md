@@ -62,7 +62,9 @@ The packed command is now less than **half** the size of the original command.
 # Examples
 
 ```Rust
-use meatpack::{is_meatpack_newline, Pack, Unpack};
+use std::process;
+
+use meatpack::{MeatPackResult, Packer, Unpacker};
 
 fn main() {
 	let gcode = "M73 P0 R3
@@ -71,50 +73,41 @@ M201 X4000 Y4000 Z200 E2500
 M203 X300 Y300 Z40 E100
 M204 P4000 R1200 T4000
 ";
+	let mut packer = Packer::<64>::default();
+	let mut out: Vec<u8> = vec![];
 
-	// ## Pack ##
-	// Pack a set of lines
-	let gcode_bytes = gcode.as_bytes();
-	// Create an instance of pack and set the internal buffer to 100 bytes.
-	let mut packer = Pack::<100>::new(gcode_bytes);
-	let mut packed: Vec<u8> = vec![];
+	out.extend(packer.header());
 
-	// Produce the header bytes for meatpack.
-	packed.extend(packer.header());
-
-	// Iterating through a slice of commands and yielding packed bytes.
-	while let Some(line) = packer.pack_next_cmd() {
-		match line {
-			Ok(line) => packed.extend(line),
-			Err(e) => {
-				println!("{:?}", e);
-				break;
+	for byte in gcode.as_bytes() {
+		let packed = packer.pack(byte);
+		match packed {
+			Ok(MeatPackResult::Line(line)) => {
+				println!("{:?}", line);
+				out.extend(line);
 			}
+			Ok(MeatPackResult::WaitingForNextByte) => {}
+			Err(e) => println!("{:?}", e),
 		}
 	}
 
-	println!("{:?}", packed);
+	println!("{:?}", out);
 
-	// ## Unpack ##
-	let mut unpacker = Unpack::<100>::default();
-	let mut start: usize = 0;
-
-	// Unpacking lines one by one
-	for i in 0..packed.len() {
-		if is_meatpack_newline(&packed[i]) {
-			let slice = &packed[start..=i];
-			let cmd = unpacker.unpack(slice);
-			match cmd {
-				Ok(cmd) => {
-					// If in std.
-					for byte in cmd {
-						let c = char::from(*byte);
-						print!("{}", c);
-					}
+	let mut unpacker = Unpacker::<64>::default();
+	for byte in out {
+		let res = unpacker.unpack(&byte);
+		match res {
+			Ok(MeatPackResult::WaitingForNextByte) => {}
+			Ok(MeatPackResult::Line(line)) => {
+				// If in std.
+				for byte in line {
+					let c = char::from(*byte);
+					print!("{}", c);
 				}
-				Err(e) => println!("{:?}", e),
 			}
-			start = i + 1;
+			Err(e) => {
+				println!("{:?}", e);
+				process::exit(0)
+			}
 		}
 	}
 }

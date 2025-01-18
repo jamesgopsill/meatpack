@@ -1,150 +1,188 @@
-use crate::{
-	arrwriter::ArrWriter,
-	meat::{
-		forward_lookup, MeatPackError, COMMENT_START_BYTE, LINEFEED_BYTE, PACKING_ENABLED_BYTE,
-		SIGNAL_BYTE,
-	},
+use crate::meat::{
+	forward_lookup, MeatPackError, MeatPackResult, COMMENT_START_BYTE, LINEFEED_BYTE,
+	PACKING_ENABLED_BYTE, SIGNAL_BYTE,
 };
 
-/// Packs a single gcode command (i.e., line).
-/// Returns on the first line feed it encounters.
-/// Errors if no LF encountered at the end of the slice.
-/// Strips all comments.
-pub fn pack_cmd<'a, const S: usize>(
-	input: &'a [u8],
-	output: &'a mut [u8; S],
-) -> Result<(usize, usize), MeatPackError> {
-	if input.is_empty() {
-		return Err(MeatPackError::EmptySlice);
-	}
-	if input[input.len() - 1] != LINEFEED_BYTE {
-		return Err(MeatPackError::LineFeedMissing);
-	}
-	let mut read: usize = 0;
-	let mut written: usize = 0;
-	let mut iter = input.iter();
-	let mut writer = ArrWriter::new(output);
-	let mut comment_flag = false;
-
-	// Now read in the data from inner.
-	while let Some(byte_one) = iter.next() {
-		read += 1;
-		if *byte_one == COMMENT_START_BYTE {
-			comment_flag = true;
-		}
-		// Check if the byte is \n and the lower is not populated
-		// so we add a \n\n packed byte.
-		if *byte_one == LINEFEED_BYTE {
-			writer.push(&204)?;
-			written += 1;
-			return Ok((read, written));
-		}
-
-		if comment_flag {
-			// Ignore the rest of the line and
-			// waiting to hit \n with the clause above.
-			continue;
-		}
-
-		let mut linefeed_flag = false;
-		let byte_two = iter.next();
-		read += 1;
-		if byte_two.is_none() {
-			return Err(MeatPackError::EmptySlice);
-		}
-		let byte_two = byte_two.unwrap();
-		if *byte_two == LINEFEED_BYTE {
-			linefeed_flag = true;
-		}
-
-		let packed_one = forward_lookup(byte_one, false);
-		let packed_two = forward_lookup(byte_two, false);
-
-		match (packed_one, packed_two) {
-			// Both packable
-			(Ok(lower), Ok(upper)) => {
-				let packed = upper << 4;
-				let packed = packed ^ lower;
-				writer.push(&packed)?;
-				written += 1;
-			}
-			(Ok(lower), Err(_)) => {
-				let upper: u8 = 0b1111;
-				let packed = upper << 4;
-				let packed = packed ^ lower;
-				writer.push(&packed)?;
-				written += 1;
-				writer.push(byte_two)?;
-				written += 1;
-			}
-			(Err(_), Ok(upper)) => {
-				let lower: u8 = 0b1111;
-				let packed = upper << 4;
-				let packed = packed ^ lower;
-				writer.push(&packed)?;
-				written += 1;
-				writer.push(byte_one)?;
-				written += 1;
-			}
-			// Both not packable so needs a signal byte in front
-			(Err(_), Err(_)) => {
-				writer.push(&SIGNAL_BYTE)?;
-				written += 1;
-				writer.push(byte_one)?;
-				written += 1;
-				writer.push(byte_two)?;
-				written += 1;
-			}
-		}
-
-		if linefeed_flag {
-			return Ok((read, written));
-		}
-	}
-	Err(MeatPackError::LineFeedMissing)
-}
-
-/// A utility struct for that wraps around the
-/// core `pack_cmd` function and provides a
-/// managed buffer.
-pub struct Pack<const S: usize> {
+pub struct Packer<const S: usize> {
+	lower: Option<u8>,
+	fullwidth: Option<u8>,
+	clear: bool,
+	no_spaces: bool,
+	strip_comments: bool,
+	comment_flag: bool,
+	pos: usize,
 	buffer: [u8; S],
 }
 
-impl<const S: usize> Default for Pack<S> {
+impl<const S: usize> Default for Packer<S> {
 	fn default() -> Self {
-		Self { buffer: [0u8; S] }
+		Self {
+			lower: None,
+			fullwidth: None,
+			clear: false,
+			no_spaces: false,
+			strip_comments: true,
+			comment_flag: false,
+			pos: 0,
+			buffer: [0u8; S],
+		}
 	}
 }
 
-impl<const S: usize> Pack<S> {
+impl<const S: usize> Packer<S> {
 	/// Return a header that needs to be place at the start of
 	/// a meatpacked gcode stream.
 	pub fn header(&self) -> [u8; 3] {
 		[SIGNAL_BYTE, SIGNAL_BYTE, PACKING_ENABLED_BYTE]
 	}
 
-	/// Packs a gcode slice. Should be a single gcode line.
+	/// Pack a byte into the current line.
 	pub fn pack(
 		&mut self,
-		slice: &[u8],
-	) -> Result<&[u8], MeatPackError> {
-		let buf = &mut self.buffer;
-		buf.fill(0);
-		let packed_cmd = pack_cmd(slice, buf);
-		match packed_cmd {
-			Ok((_, written)) => {
-				let out = &buf[0..written];
-				if written > 0 {
-					if written == 1 && buf[0] == 204 {
-						// return an empty slice as it just a \n\n
-						return Ok(&[]);
-					}
-					return Ok(out);
-				}
-				Err(MeatPackError::EmptySlice)
-			}
-			Err(e) => Err(e),
+		b: &u8,
+	) -> Result<MeatPackResult, MeatPackError> {
+		if self.clear {
+			self.clear()
 		}
+		if self.strip_comments {
+			if *b == COMMENT_START_BYTE {
+				self.comment_flag = true;
+			}
+			if *b == LINEFEED_BYTE {
+				self.comment_flag = false;
+			}
+			if self.comment_flag {
+				return Ok(MeatPackResult::WaitingForNextByte);
+			}
+		}
+
+		match (self.lower, b) {
+			// Special case requiring \n\n.
+			(None, 10) => {
+				let upper_and_lower = forward_lookup(&10, self.no_spaces).unwrap();
+				let p = self.pack_bytes(upper_and_lower, upper_and_lower);
+				self.push(p)?;
+				self.clear = true;
+				// Remove empty lines.
+				if self.pos > 1 {
+					Ok(MeatPackResult::Line(self.return_slice()))
+				} else {
+					Ok(MeatPackResult::WaitingForNextByte)
+				}
+			}
+			// Start of a new byte to pack.
+			(None, b) => match forward_lookup(b, self.no_spaces) {
+				// Packable byte
+				Ok(lower) => {
+					self.lower = Some(lower);
+					self.fullwidth = None;
+					Ok(MeatPackResult::WaitingForNextByte)
+				}
+				// Fullwidth byte
+				Err(_) => {
+					self.lower = Some(0b1111);
+					self.fullwidth = Some(*b);
+					Ok(MeatPackResult::WaitingForNextByte)
+				}
+			},
+			// fullwidth + \n
+			(Some(0b1111), 10) => {
+				let upper = forward_lookup(&10, self.no_spaces).unwrap();
+				let p = self.pack_bytes(upper, 0b1111);
+				self.push(p)?;
+				self.push(self.fullwidth.unwrap())?;
+				self.lower = None;
+				self.fullwidth = None;
+				self.clear = true;
+				Ok(MeatPackResult::Line(self.return_slice()))
+			}
+			// Full width + some other b byte that is not a \n
+			(Some(0b1111), b) => match forward_lookup(b, self.no_spaces) {
+				// Packable byte
+				Ok(upper) => {
+					let p = self.pack_bytes(upper, 0b1111);
+					self.push(p)?;
+					self.push(self.fullwidth.unwrap())?;
+					self.lower = None;
+					self.fullwidth = None;
+					Ok(MeatPackResult::WaitingForNextByte)
+				}
+				// Fullwidth byte
+				Err(_) => {
+					let p = self.pack_bytes(0b1111, 0b1111);
+					self.push(p)?;
+					self.push(self.fullwidth.unwrap())?;
+					self.push(*b)?;
+					self.lower = None;
+					self.fullwidth = None;
+					Ok(MeatPackResult::WaitingForNextByte)
+				}
+			},
+			// Some packable lower byte with a \n upper.
+			(Some(lower), 10) => {
+				let upper = forward_lookup(b, self.no_spaces).unwrap();
+				let p = self.pack_bytes(upper, lower);
+				self.push(p)?;
+				self.lower = None;
+				self.fullwidth = None;
+				self.clear = true;
+				Ok(MeatPackResult::Line(self.return_slice()))
+			}
+			// Lower is packable + whatever b is but not a \n
+			(Some(lower), b) => match forward_lookup(b, self.no_spaces) {
+				// Packable byte
+				Ok(upper) => {
+					let p = self.pack_bytes(upper, lower);
+					self.push(p)?;
+					self.lower = None;
+					self.fullwidth = None;
+					Ok(MeatPackResult::WaitingForNextByte)
+				}
+				// Fullwidth byte
+				Err(_) => {
+					let p = self.pack_bytes(0b1111, lower);
+					self.push(p)?;
+					self.push(*b)?;
+					self.lower = None;
+					self.fullwidth = None;
+					Ok(MeatPackResult::WaitingForNextByte)
+				}
+			},
+		}
+	}
+
+	/// Returns a slice of the filled elements in the buffer.
+	fn return_slice(&mut self) -> &[u8] {
+		&self.buffer[0..self.pos]
+	}
+
+	/// Clears the buffer
+	fn clear(&mut self) {
+		self.buffer.fill(0);
+		self.pos = 0;
+		self.clear = false;
+	}
+
+	/// Adds a byte to the buffer.
+	fn push(
+		&mut self,
+		byte: u8,
+	) -> Result<(), MeatPackError> {
+		if self.pos > S {
+			return Err(MeatPackError::BufferFull);
+		}
+		self.buffer[self.pos] = byte;
+		self.pos += 1;
+		Ok(())
+	}
+
+	// Pack two 4-bit representations together.
+	fn pack_bytes(
+		&self,
+		upper: u8,
+		lower: u8,
+	) -> u8 {
+		let packed = upper << 4;
+		packed ^ lower
 	}
 }

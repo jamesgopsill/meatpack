@@ -3,6 +3,11 @@ pub static PACKING_ENABLED_BYTE: u8 = 251;
 pub static LINEFEED_BYTE: u8 = 10;
 pub static COMMENT_START_BYTE: u8 = 59;
 
+pub enum MeatPackResult<'a> {
+	WaitingForNextByte,
+	Line(&'a [u8]),
+}
+
 /// A set of possible error codes from the MeatPack crate.
 #[derive(Debug)]
 pub enum MeatPackError {
@@ -60,11 +65,6 @@ pub fn determine_command(byte: &u8) -> Result<MeatPackCommand, MeatPackError> {
 /// Checks whether a `u8` is a signal byte `255`.
 pub fn is_signal_byte(byte: &u8) -> bool {
 	matches!(byte, 255)
-}
-
-/// Checks whether a `u8` is a linefeed byte `10`.
-pub fn is_linefeed_byte(byte: &u8) -> bool {
-	matches!(byte, 10)
 }
 
 /// Unpacks the 2 x 4-bit meatpack code packed into a u8.
@@ -177,7 +177,9 @@ pub fn forward_lookup(
 	}
 }
 
-/// Detects whether the packed `u8` contains a newline.
+// Detects whether the packed `u8` contains a newline.
+/*
 pub fn is_meatpack_newline(byte: &u8) -> bool {
 	byte >> 4 == 0b1100
 }
+*/
