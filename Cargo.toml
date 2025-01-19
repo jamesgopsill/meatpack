@@ -6,7 +6,7 @@ license = "MIT"
 description = "A Rust implementation of the MeatPack algorithm for encoding gcode."
 repository = "https://github.com/jamesgopsill/meatpack"
 readme = "README.md"
-keywords = ["gcode", "no_std", "additive", "manufacturing", "3D", "printing"]
+keywords = ["gcode", "no_std", "additive", "manufacturing", "3D printing"]
 
 [dependencies]
 clap = { version = "4.5.26", features = ["derive"] }
