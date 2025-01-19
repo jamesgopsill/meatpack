@@ -12,6 +12,8 @@ pub enum UnpackerState {
 	Disabled,
 }
 
+/// A  struct for that unpacks bytes and emits
+/// lines of gcode.
 pub struct Unpacker<const S: usize> {
 	state: UnpackerState,
 	no_spaces: bool,

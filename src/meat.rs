@@ -11,15 +11,11 @@ pub enum MeatPackResult<'a> {
 /// A set of possible error codes from the MeatPack crate.
 #[derive(Debug)]
 pub enum MeatPackError {
-	EmptySlice,
-	EndOfSlice,
 	InvalidByte,
 	InvalidState,
 	InvalidCommandByte,
 	BufferFull,
 	FullWidthByte,
-	LineTooSmallToPack,
-	LineFeedMissing,
 }
 
 /// An enum detailing all the available Meatpack commands.
@@ -176,10 +172,3 @@ pub fn forward_lookup(
 		_ => Err(MeatPackError::FullWidthByte),
 	}
 }
-
-// Detects whether the packed `u8` contains a newline.
-/*
-pub fn is_meatpack_newline(byte: &u8) -> bool {
-	byte >> 4 == 0b1100
-}
-*/

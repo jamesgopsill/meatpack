@@ -1,6 +1,9 @@
 # Meatpack
 
-A pure Rust implementation of Scott Mudge's [MeatPack](https://github.com/scottmudge/OctoPrint-MeatPack) algorithm. The crate works in both `std` and `no_std` environments. A CLI and bindings for other languages are in the pipeline. The library is configurable allowing you to set it up according to your embedded system resource constraints.
+A pure Rust implementation of Scott Mudge's [MeatPack](https://github.com/scottmudge/OctoPrint-MeatPack) algorithm.
+The crate works in both `std` and `no_std` environments.
+A CLI is provided and bindings for other languages are in the pipeline.
+The `Packer` and `Unpacker` structs are configurable allowing you to set it up according to your embedded system resource constraints.
 
 # Support
 
@@ -14,15 +17,22 @@ Please consider supporting the crate by:
 
 ## The Algorithm
 
-Gcode uses a restricted alphabet and are mostly made up of numbers, decimal point, a few letters ('G', 'M', 'E', etc.), and other utilitiy characters (newline, space, etc.). Scott's histographic analysis of a dozen or so gcode files found that **~93%** of all gcode use the same **15 characters**. Gcode is stored as a sequence of `u8` ascii characters that can fit a 256-character alphabet.
+Gcode uses a restricted alphabet and are mostly made up of numbers, decimal point, a few letters ('G', 'M', 'E', etc.), and other utilitiy characters (newline, space, etc.).
+Scott's histographic analysis of a dozen or so gcode files found that **~93%** of all gcode use the same **15 characters**.
+Gcode is stored as a sequence of `u8` ascii characters that can fit a 256-character alphabet.
 
-**MeatPack** takes advantage of this histographic property and uses a lookup table that takes the 15 most popular characters and matches them to a 4-bit representation (capable of representing 16 characters). This 4-bit representations are packed into 8-bit/1-byte characters. This effectively doubles the data density of a gcode file.
+**MeatPack** takes advantage of this histographic property and uses a lookup table that takes the 15 most popular characters and matches them to a 4-bit representation (capable of representing 16 characters).
+This 4-bit representations are packed into 8-bit/1-byte characters.
+This effectively doubles the data density of a gcode file.
 
 The 16th character (`0b1111`) of the 4-bit representation is reserved for telling the unpacker that it should expect a full-width character in the following byte.
 
-The packer reorders some characters if the full width character is surrounded by packable characters. This is to avoid 4 bits being wasted telling the packer that only one full width character is coming up.
+The packer reorders some characters if the full width character is surrounded by packable characters.
+This is to avoid 4 bits being wasted telling the packer that only one full width character is coming up.
 
-If the lower 4-bits contains `0b1111` then we unpack the full width character followed by the upper 4-bit character. If the upper 4-bit contains `0b1111` then we unpack the lower 4-bit character followed by the full width character. This minor reordering allows slightly more data to the be packed at the cost of a little complexity.
+If the lower 4-bits contains `0b1111` then we unpack the full width character followed by the upper 4-bit character.
+If the upper 4-bit contains `0b1111` then we unpack the lower 4-bit character followed by the full width character.
+This minor reordering allows slightly more data to the be packed at the cost of a little complexity.
 
 ### Example
 
@@ -47,7 +57,9 @@ The packed command is now less than **half** the size of the original command.
 
 ## Command Patterns
 
-**MeatPack** provides a communication/control layer identified by 2 255 (`OxFF`) signal bytes followed by a command byte. `0xFF` is virtually never found in gcode, so it is can be considered a reserved character. The following command bytes exist:
+**MeatPack** provides a communication/control layer identified by 2 255 (`OxFF`) signal bytes followed by a command byte.
+`0xFF` is virtually never found in gcode, so it is can be considered a reserved character.
+The following command bytes exist:
 
 | Byte (`u8`) Value | Command |
 |---|---|

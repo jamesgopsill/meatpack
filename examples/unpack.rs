@@ -1,4 +1,4 @@
-use std::process::exit;
+use core::str;
 
 use meatpack::{MeatPackResult, Unpacker};
 
@@ -20,15 +20,12 @@ fn main() {
 				//println!("Waiting for next byte");
 			}
 			Ok(MeatPackResult::Line(line)) => {
+				let line = str::from_utf8(line).unwrap();
 				println!("{:?}", line);
-				for byte in line {
-					let c = char::from(*byte);
-					print!("{}", c);
-				}
 			}
 			Err(e) => {
 				println!("{:?}", e);
-				exit(0);
+				panic!();
 			}
 		}
 	}

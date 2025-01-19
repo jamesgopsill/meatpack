@@ -1,5 +1,3 @@
-use std::process;
-
 use meatpack::{MeatPackResult, Packer};
 
 fn main() {
@@ -21,7 +19,7 @@ M204 P4000 R1200 T4000
 			Ok(MeatPackResult::WaitingForNextByte) => {}
 			Err(e) => {
 				println!("{:?}", e);
-				process::exit(1);
+				panic!()
 			}
 		}
 	}

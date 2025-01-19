@@ -3,6 +3,9 @@ use crate::meat::{
 	PACKING_ENABLED_BYTE, SIGNAL_BYTE,
 };
 
+/// A  struct for that packs bytes and emits
+/// lines of meatpacked gcode. Stripping comments
+/// is on by default and empty lines are omitted.
 pub struct Packer<const S: usize> {
 	lower: Option<u8>,
 	fullwidth: Option<u8>,
