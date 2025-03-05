@@ -10,3 +10,12 @@ keywords = ["gcode", "no_std", "MEX", "FDM", "3d_printing"]
 
 [dependencies]
 clap = { version = "4.5.26", features = ["derive"] }
+
+[[example]]
+name = "pack"
+
+[[example]]
+name = "unpack"
+
+[[example]]
+name = "pack_unpack"
