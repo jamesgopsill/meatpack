@@ -9,4 +9,4 @@ readme = "README.md"
 keywords = ["gcode", "no_std", "MEX", "FDM", "3d_printing"]
 
 [dependencies]
-clap = { version = "4.5.26", features = ["derive"] }
+clap = { version = "4.5.31", features = ["derive"] }
