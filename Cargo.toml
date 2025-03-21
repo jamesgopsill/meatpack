@@ -8,5 +8,14 @@ repository = "https://github.com/jamesgopsill/meatpack"
 readme = "README.md"
 keywords = ["gcode", "no_std", "MEX", "FDM", "3d_printing"]
 
+[[example]]
+name = "pack"
+
+[[example]]
+name = "unpack"
+
+[[example]]
+name = "pack_unpack"
+
 [dependencies]
 clap = { version = "4.5.31", features = ["derive"] }
