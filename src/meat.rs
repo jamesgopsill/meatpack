@@ -2,6 +2,7 @@ pub static SIGNAL_BYTE: u8 = 255;
 pub static PACKING_ENABLED_BYTE: u8 = 251;
 pub static LINEFEED_BYTE: u8 = 10;
 pub static COMMENT_START_BYTE: u8 = 59;
+pub static MEATPACK_HEADER: [u8; 3] = [SIGNAL_BYTE, SIGNAL_BYTE, PACKING_ENABLED_BYTE];
 
 pub enum MeatPackResult<'a> {
 	WaitingForNextByte,

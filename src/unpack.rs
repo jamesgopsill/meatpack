@@ -2,6 +2,10 @@ use crate::meat::{
 	determine_command, is_signal_byte, unpack_byte, MeatPackCommand, MeatPackError, MeatPackResult,
 };
 
+#[cfg(feature = "alloc")]
+use alloc::vec::Vec;
+
+/// A list of state the Unpacker struct can exist in.
 #[derive(Debug)]
 pub enum UnpackerState {
 	FirstCommandByte,
@@ -23,6 +27,7 @@ pub struct Unpacker<const S: usize> {
 }
 
 impl<const S: usize> Default for Unpacker<S> {
+	/// The default implementation of the unpacker.
 	fn default() -> Self {
 		Self {
 			state: UnpackerState::Disabled,
@@ -35,6 +40,9 @@ impl<const S: usize> Default for Unpacker<S> {
 }
 
 impl<const S: usize> Unpacker<S> {
+	/// Unpacks a single meatpacked byte checking on the
+	/// history of the previously unpacked items. It returns
+	/// detailing what it is waiting for next.
 	pub fn unpack(
 		&mut self,
 		byte: &u8,
@@ -157,6 +165,8 @@ impl<const S: usize> Unpacker<S> {
 		}
 	}
 
+	/// Clears the internal buffer and resets the
+	/// write position into the internal buffer.
 	fn clear(&mut self) {
 		self.buffer.fill(0);
 		self.pos = 0;
@@ -168,6 +178,7 @@ impl<const S: usize> Unpacker<S> {
 		&self.buffer[0..self.pos]
 	}
 
+	/// Push a byte to the internal buffer.
 	fn push(
 		&mut self,
 		byte: &u8,
@@ -180,6 +191,8 @@ impl<const S: usize> Unpacker<S> {
 		Ok(())
 	}
 
+	/// Handles the command byte combinations that
+	/// exist in the meatpack spec.
 	fn handle_command(
 		&mut self,
 		cmd: MeatPackCommand,
@@ -206,5 +219,32 @@ impl<const S: usize> Unpacker<S> {
 			}
 			MeatPackCommand::SignalByte => {}
 		}
+	}
+
+	/// A convenience function around unpacker that enables you
+	/// to simply unpack meapacked data from a slice to a vec.
+	#[cfg(feature = "alloc")]
+	pub fn unpack_slice(
+		in_buf: &[u8],
+		out_buf: &mut Vec<u8>,
+	) -> Result<(), MeatPackError> {
+		let mut unpacker = Unpacker::<S>::default();
+		for b in in_buf {
+			match unpacker.unpack(b) {
+				Ok(MeatPackResult::Line(line)) => out_buf.extend(line),
+				Ok(MeatPackResult::WaitingForNextByte) => {}
+				Err(e) => return Err(e),
+			}
+		}
+		// if the unpacker is in the state of clearing itself
+		// on the next iteration then ignore as we hit a new line.
+		// Otherwise we have an unterminated line with some
+		// data possibly stuck in the buf.
+		// The question is whether we error on this case as the
+		// buf should end on a new line IMO.
+		if !unpacker.clear {
+			out_buf.extend(unpacker.return_slice());
+		}
+		Ok(())
 	}
 }

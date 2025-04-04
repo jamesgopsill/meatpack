@@ -8,6 +8,10 @@ repository = "https://github.com/jamesgopsill/meatpack"
 readme = "README.md"
 keywords = ["gcode", "no_std", "MEX", "FDM", "3d_printing"]
 
+[features]
+default = []
+alloc = []
+
 [[example]]
 name = "pack"
 

@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use meatpack::{MeatPackResult, Packer, Unpacker};
+use meatpack::{MeatPackResult, Packer, Unpacker, MEATPACK_HEADER};
 use std::{
 	fs::File,
 	io::{BufReader, BufWriter, Read, Write},
@@ -34,7 +34,7 @@ fn main() {
 
 			let mut packer = Packer::<128>::default();
 
-			writer.write_all(&packer.header()).unwrap();
+			writer.write_all(&MEATPACK_HEADER).unwrap();
 
 			let mut line_count: u32 = 0;
 			let mut byte = [0u8];

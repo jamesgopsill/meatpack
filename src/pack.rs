@@ -1,7 +1,11 @@
 use crate::meat::{
 	forward_lookup, MeatPackError, MeatPackResult, COMMENT_START_BYTE, LINEFEED_BYTE,
-	PACKING_ENABLED_BYTE, SIGNAL_BYTE,
 };
+
+#[cfg(feature = "alloc")]
+use crate::MEATPACK_HEADER;
+#[cfg(feature = "alloc")]
+use alloc::vec::Vec;
 
 /// A  struct for that packs bytes and emits
 /// lines of meatpacked gcode. Stripping comments
@@ -18,6 +22,7 @@ pub struct Packer<const S: usize> {
 }
 
 impl<const S: usize> Default for Packer<S> {
+	/// The default implementation of a Packer.
 	fn default() -> Self {
 		Self {
 			lower: None,
@@ -33,12 +38,6 @@ impl<const S: usize> Default for Packer<S> {
 }
 
 impl<const S: usize> Packer<S> {
-	/// Return a header that needs to be place at the start of
-	/// a meatpacked gcode stream.
-	pub fn header(&self) -> [u8; 3] {
-		[SIGNAL_BYTE, SIGNAL_BYTE, PACKING_ENABLED_BYTE]
-	}
-
 	/// Pack a byte into the current line.
 	pub fn pack(
 		&mut self,
@@ -187,5 +186,33 @@ impl<const S: usize> Packer<S> {
 	) -> u8 {
 		let packed = upper << 4;
 		packed ^ lower
+	}
+
+	/// A convenience function for those with alloc available to them.
+	/// It wraps around packer and packs a slice of bytes into a vec.
+	#[cfg(feature = "alloc")]
+	pub fn pack_slice(
+		in_buf: &[u8],
+		out_buf: &mut Vec<u8>,
+	) -> Result<(), MeatPackError> {
+		out_buf.extend(MEATPACK_HEADER);
+		let mut packer = Packer::<S>::default();
+		for b in in_buf {
+			match packer.pack(b) {
+				Ok(MeatPackResult::Line(line)) => out_buf.extend(line),
+				Ok(MeatPackResult::WaitingForNextByte) => {}
+				Err(e) => return Err(e),
+			}
+		}
+		// if the packer is in the state of clearing itself
+		// on the next iteration then ignore as we hit a new line.
+		// Otherwise we have an unterminated line with some
+		// data possibly stuck in the buf.
+		// The question is whether we error on this case as the
+		// buf should end on a new line IMO.
+		if !packer.clear {
+			out_buf.extend(packer.return_slice());
+		}
+		Ok(())
 	}
 }

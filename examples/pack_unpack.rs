@@ -1,6 +1,6 @@
 use std::process;
 
-use meatpack::{MeatPackResult, Packer, Unpacker};
+use meatpack::{MeatPackResult, Packer, Unpacker, MEATPACK_HEADER};
 
 fn main() {
 	let gcode = "M73 P0 R3
@@ -12,7 +12,7 @@ M204 P4000 R1200 T4000
 	let mut packer = Packer::<64>::default();
 	let mut out: Vec<u8> = vec![];
 
-	out.extend(packer.header());
+	out.extend(&MEATPACK_HEADER);
 
 	for byte in gcode.as_bytes() {
 		let packed = packer.pack(byte);
