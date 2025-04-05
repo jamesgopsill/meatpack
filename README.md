@@ -73,6 +73,18 @@ The following command bytes exist:
 
 # Examples
 
+Examples can be found in the `examples` folder. No `alloc` featured examples can be called using:
+
+```
+cargo run --example pack
+```
+
+and `alloc` features.
+
+```
+cargo run --example alloc_unpack --features="alloc"
+```
+
 ```Rust
 use std::process;
 

@@ -207,11 +207,10 @@ impl<const S: usize> Packer<S> {
 		// if the packer is in the state of clearing itself
 		// on the next iteration then ignore as we hit a new line.
 		// Otherwise we have an unterminated line with some
-		// data possibly stuck in the buf.
-		// The question is whether we error on this case as the
-		// buf should end on a new line IMO.
+		// data possibly stuck in the buffer and we're expecting
+		// to end with a terminated line so throw an err.
 		if !packer.clear {
-			out_buf.extend(packer.return_slice());
+			return Err(MeatPackError::UnterminatedLine(packer.pos));
 		}
 		Ok(())
 	}

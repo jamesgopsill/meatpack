@@ -8,11 +8,18 @@ fn main() {
 	path.push("test_files");
 	path.push("box.gcode");
 
+	// Read the gcode into memory as we have the luxury
+	// plenty of RAM on a PC.
 	let gcode = fs::read(path).unwrap();
+
+	// Lets pack the gcode.
 	let mut meat = Vec::new();
+
+	// And demonstrate the difference in size
 	Packer::<128>::pack_slice(&gcode, &mut meat).unwrap();
 	let gl = gcode.len() as f32;
 	let ml = meat.len() as f32;
 	let ratio = ml / gl;
+
 	println!("Gcode: {}, Meat: {}, {}", gl, ml, ratio);
 }

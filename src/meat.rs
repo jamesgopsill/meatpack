@@ -17,6 +17,7 @@ pub enum MeatPackError {
 	InvalidCommandByte,
 	BufferFull,
 	FullWidthByte,
+	UnterminatedLine(usize),
 }
 
 /// An enum detailing all the available Meatpack commands.

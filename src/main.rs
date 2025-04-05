@@ -7,6 +7,7 @@ use std::{
 	process,
 };
 
+/// Command line options
 #[derive(Debug, Parser)]
 #[command(version, about, long_about = None)]
 struct Cli {
@@ -14,12 +15,14 @@ struct Cli {
 	command: Option<Command>,
 }
 
+/// The different commands that can be parsed
 #[derive(Debug, Subcommand)]
 enum Command {
 	Pack { infile: PathBuf, outfile: PathBuf },
 	Unpack { infile: PathBuf, outfile: PathBuf },
 }
 
+/// CLI
 fn main() {
 	println!("MeatPack!");
 	let cli = Cli::parse();
