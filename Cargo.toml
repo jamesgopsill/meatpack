@@ -1,6 +1,6 @@
 [package]
 name = "meatpack"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 license = "MIT"
 description = "A Rust implementation of the MeatPack algorithm for encoding gcode."
@@ -30,4 +30,4 @@ name = "alloc_unpack"
 required-features = ["alloc"]
 
 [dependencies]
-clap = { version = "4.5.31", features = ["derive"] }
+clap = { version = "4.5.35", features = ["derive"] }

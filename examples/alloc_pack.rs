@@ -12,6 +12,8 @@ fn main() {
 	// plenty of RAM on a PC.
 	let gcode = fs::read(path).unwrap();
 
+	println!("{:?}", &gcode[gcode.len() - 10..]);
+
 	// Lets pack the gcode.
 	let mut meat = Vec::new();
 

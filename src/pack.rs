@@ -18,7 +18,7 @@ pub struct Packer<const S: usize> {
 	strip_comments: bool,
 	comment_flag: bool,
 	pos: usize,
-	buffer: [u8; S],
+	inner: [u8; S],
 }
 
 impl<const S: usize> Default for Packer<S> {
@@ -32,7 +32,7 @@ impl<const S: usize> Default for Packer<S> {
 			strip_comments: true,
 			comment_flag: false,
 			pos: 0,
-			buffer: [0u8; S],
+			inner: [0u8; S],
 		}
 	}
 }
@@ -153,19 +153,19 @@ impl<const S: usize> Packer<S> {
 		}
 	}
 
-	/// Returns a slice of the filled elements in the buffer.
+	/// Returns a slice of the filled elements in the inner.
 	fn return_slice(&mut self) -> &[u8] {
-		&self.buffer[0..self.pos]
+		&self.inner[0..self.pos]
 	}
 
-	/// Clears the buffer
+	/// Clears the inner
 	fn clear(&mut self) {
-		self.buffer.fill(0);
+		self.inner.fill(0);
 		self.pos = 0;
 		self.clear = false;
 	}
 
-	/// Adds a byte to the buffer.
+	/// Adds a byte to the inner.
 	fn push(
 		&mut self,
 		byte: u8,
@@ -173,12 +173,12 @@ impl<const S: usize> Packer<S> {
 		if self.pos > S {
 			return Err(MeatPackError::BufferFull);
 		}
-		self.buffer[self.pos] = byte;
+		self.inner[self.pos] = byte;
 		self.pos += 1;
 		Ok(())
 	}
 
-	// Pack two 4-bit representations together.
+	/// Pack two 4-bit representations together.
 	fn pack_bytes(
 		&self,
 		upper: u8,
@@ -186,6 +186,16 @@ impl<const S: usize> Packer<S> {
 	) -> u8 {
 		let packed = upper << 4;
 		packed ^ lower
+	}
+
+	/// A utility function to check if any data remains
+	/// in the internal inner. We expect all meatpack
+	/// lines to newline end.
+	pub fn data_remains(&self) -> bool {
+		if !self.clear || self.pos == 0 {
+			return true;
+		}
+		false
 	}
 
 	/// A convenience function for those with alloc available to them.
@@ -207,9 +217,9 @@ impl<const S: usize> Packer<S> {
 		// if the packer is in the state of clearing itself
 		// on the next iteration then ignore as we hit a new line.
 		// Otherwise we have an unterminated line with some
-		// data possibly stuck in the buffer and we're expecting
+		// data possibly stuck in the inner and we're expecting
 		// to end with a terminated line so throw an err.
-		if !packer.clear {
+		if packer.data_remains() {
 			return Err(MeatPackError::UnterminatedLine(packer.pos));
 		}
 		Ok(())

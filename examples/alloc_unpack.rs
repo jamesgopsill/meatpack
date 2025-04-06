@@ -29,4 +29,13 @@ fn main() {
 	// Lets just check that these are the same.
 	println!("Original [0..20]:        {:?}", &gcode[0..20]);
 	println!("Packed Unpacked [0..20]: {:?}", &unpacked[0..20]);
+
+	println!(
+		"Original [len-10..]:        {:?}",
+		&gcode[gcode.len() - 10..]
+	);
+	println!(
+		"Packed Unpacked [len-10..]: {:?}",
+		&unpacked[unpacked.len() - 10..]
+	);
 }

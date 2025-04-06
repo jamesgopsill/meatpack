@@ -54,6 +54,11 @@ fn main() {
 					}
 				}
 			}
+
+			if packer.data_remains() {
+				eprintln!("Data remains in the packer. Please make sure the last line is terminated with a new line.")
+			}
+
 			println!("Lines packed: {}", line_count);
 		}
 		Some(Command::Unpack { infile, outfile }) => {
@@ -80,6 +85,11 @@ fn main() {
 					}
 				}
 			}
+
+			if unpacker.data_remains() {
+				eprintln!("Data remains in the unpacker. The last line is not terminated with a new line.")
+			}
+
 			println!("Lines packed: {}", line_count);
 		}
 		None => {

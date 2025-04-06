@@ -23,7 +23,7 @@ pub struct Unpacker<const S: usize> {
 	no_spaces: bool,
 	clear: bool,
 	pos: usize,
-	buffer: [u8; S],
+	inner: [u8; S],
 }
 
 impl<const S: usize> Default for Unpacker<S> {
@@ -34,7 +34,7 @@ impl<const S: usize> Default for Unpacker<S> {
 			no_spaces: false,
 			clear: false,
 			pos: 0,
-			buffer: [0u8; S],
+			inner: [0u8; S],
 		}
 	}
 }
@@ -69,7 +69,7 @@ impl<const S: usize> Unpacker<S> {
 				}
 				_ => {
 					self.pos = 0;
-					self.buffer.fill(0);
+					self.inner.fill(0);
 					return Err(MeatPackError::InvalidState);
 				}
 			}
@@ -125,12 +125,12 @@ impl<const S: usize> Unpacker<S> {
 				// for a return value.
 				match self.state {
 					UnpackerState::Enabled => {
-						if self.buffer[self.pos - 1] == 10 && self.pos > 1 {
+						if self.inner[self.pos - 1] == 10 && self.pos > 1 {
 							self.clear = true; // clear buffer next time round.
 							return Ok(MeatPackResult::Line(self.return_slice()));
 						}
 						// empty line
-						if self.buffer[self.pos - 1] == 10 {
+						if self.inner[self.pos - 1] == 10 {
 							self.clear = true; // clear buffer next time round.
 						}
 						Ok(MeatPackResult::WaitingForNextByte)
@@ -155,8 +155,8 @@ impl<const S: usize> Unpacker<S> {
 			}
 			UnpackerState::LeftFullWidthByte => {
 				self.state = UnpackerState::Enabled;
-				self.buffer[self.pos - 2] = *byte;
-				if self.buffer[self.pos - 1] == 10 {
+				self.inner[self.pos - 2] = *byte;
+				if self.inner[self.pos - 1] == 10 {
 					self.clear = true; // clear buffer next time round.
 					return Ok(MeatPackResult::Line(self.return_slice()));
 				}
@@ -168,14 +168,14 @@ impl<const S: usize> Unpacker<S> {
 	/// Clears the internal buffer and resets the
 	/// write position into the internal buffer.
 	fn clear(&mut self) {
-		self.buffer.fill(0);
+		self.inner.fill(0);
 		self.pos = 0;
 		self.clear = false;
 	}
 
 	/// Returns a slice of the filled elements in the buffer.
 	fn return_slice(&mut self) -> &[u8] {
-		&self.buffer[0..self.pos]
+		&self.inner[0..self.pos]
 	}
 
 	/// Push a byte to the internal buffer.
@@ -186,7 +186,7 @@ impl<const S: usize> Unpacker<S> {
 		if self.pos > S {
 			return Err(MeatPackError::BufferFull);
 		}
-		self.buffer[self.pos] = *byte;
+		self.inner[self.pos] = *byte;
 		self.pos += 1;
 		Ok(())
 	}
@@ -221,6 +221,16 @@ impl<const S: usize> Unpacker<S> {
 		}
 	}
 
+	/// A utility function to check if any data remains
+	/// in the internal buffer. We expect all meatpack
+	/// lines to newline end.
+	pub fn data_remains(&self) -> bool {
+		if !self.clear || self.pos == 0 {
+			return true;
+		}
+		false
+	}
+
 	/// A convenience function around unpacker that enables you
 	/// to simply unpack meapacked data from a slice to a vec.
 	#[cfg(feature = "alloc")]
@@ -241,7 +251,7 @@ impl<const S: usize> Unpacker<S> {
 		// Otherwise we have an unterminated line with some
 		// data possibly stuck in the buffer and we're expecting
 		// to end with a terminated line so throw an err.
-		if !unpacker.clear {
+		if unpacker.data_remains() {
 			return Err(MeatPackError::UnterminatedLine(unpacker.pos));
 		}
 		Ok(())
