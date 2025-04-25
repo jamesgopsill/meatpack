@@ -4,12 +4,10 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
-mod meat;
-mod pack;
-mod unpack;
+mod components;
 
-pub use meat::MeatPackError;
-pub use meat::MeatPackResult;
-pub use meat::MEATPACK_HEADER;
-pub use pack::Packer;
-pub use unpack::Unpacker;
+pub use components::meat::MeatPackError;
+pub use components::meat::MeatPackResult;
+pub use components::meat::MEATPACK_HEADER;
+pub use components::pack::Packer;
+pub use components::unpack::Unpacker;

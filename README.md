@@ -1,9 +1,9 @@
 # Meatpack
 
-A pure Rust implementation of Scott Mudge's [MeatPack](https://github.com/scottmudge/OctoPrint-MeatPack) algorithm.
-The crate works in both `std` and `no_std` environments.
+A pure Rust implementation of Scott Mudge's [MeatPack][1] algorithm.
+The crate works in both `std` and `no_std` environments. Add the `alloc` feature for additional for environments with a heap.
 A CLI is provided and bindings for other languages are in the pipeline.
-The `Packer` and `Unpacker` structs are configurable allowing you to set it up according to your embedded system resource constraints.
+The `Packer` and `Unpacker` structs are configurable allowing you to set them up according to your embedded system resource constraints.
 
 # Support
 
@@ -13,28 +13,26 @@ Please consider supporting the crate by:
 - Raising issues and improvements on the GitHub repo.
 - Recommending the crate to others.
 - ⭐ the crate on GitHub.
-- Sponsoring the [maintainer](https://github.com/sponsors/jamesgopsill).
+- Sponsoring the [maintainer][2].
 
-## The Algorithm
+# The Algorithm
 
-Gcode uses a restricted alphabet and are mostly made up of numbers, decimal point, a few letters ('G', 'M', 'E', etc.), and other utilitiy characters (newline, space, etc.).
-Scott's histographic analysis of a dozen or so gcode files found that **~93%** of all gcode use the same **15 characters**.
-Gcode is stored as a sequence of `u8` ascii characters that can fit a 256-character alphabet.
+The gcode specification uses a restricted alphabet if ASCII (`u8`) characters resulting in files mostly made up of numbers, decimal point, a few letters ('G', 'M', 'E', etc.), and a few utility characters (newline, space, etc.).
+Scott's histographic analysis of several gcode files found that **15 characters** forms **~93%** of all gcode.
 
-**MeatPack** takes advantage of this histographic property and uses a lookup table that takes the 15 most popular characters and matches them to a 4-bit representation (capable of representing 16 characters).
-This 4-bit representations are packed into 8-bit/1-byte characters.
-This effectively doubles the data density of a gcode file.
+**MeatPack** takes advantage of this histographic property and uses a 4-bit lookup table that matches the 15 most popular characters.
+The 4-bit representations are then packed into 8-bit/1-byte characters effectively doubling the data density.
 
-The 16th character (`0b1111`) of the 4-bit representation is reserved for telling the unpacker that it should expect a full-width character in the following byte.
+The 16th 4-bit character (`0b1111`) is reserved to tell the unpacker that a standard ASCII full-width character should be expected in the following byte. This allows the rest of the ASCII character set to be represented.
 
-The packer reorders some characters if the full width character is surrounded by packable characters.
-This is to avoid 4 bits being wasted telling the packer that only one full width character is coming up.
+The algorithm features an additional optimisation where the packer reorders the characters if the full width character is surrounded by packable characters.
+This helps avoid 4 bits being wasted when telling the packer that a full width character is coming up.
 
-If the lower 4-bits contains `0b1111` then we unpack the full width character followed by the upper 4-bit character.
-If the upper 4-bit contains `0b1111` then we unpack the lower 4-bit character followed by the full width character.
-This minor reordering allows slightly more data to the be packed at the cost of a little complexity.
+If the lower 4-bits contains `0b1111` then the full width character is unpacked followed by the upper 4-bit character.
+If the upper 4-bit contains `0b1111` then the lower 4-bit character is unpacked followed by the full width character.
+The reordering allows slightly more data to the be packed at the cost of a little complexity.
 
-### Example
+## Example
 
 Take the following "G1" command.
 
@@ -55,9 +53,9 @@ The characters are ordered in bit order (upper, lower) and would be unpacked low
 The packed command is now less than **half** the size of the original command.
 
 
-## Command Patterns
+# Command Patterns
 
-**MeatPack** provides a communication/control layer identified by 2 255 (`OxFF`) signal bytes followed by a command byte.
+MeatPack also provides a communication/control layer identified by 2 255 (`OxFF`) signal bytes followed by a command byte.
 `0xFF` is virtually never found in gcode, so it is can be considered a reserved character.
 The following command bytes exist:
 
@@ -75,71 +73,25 @@ The following command bytes exist:
 
 Examples can be found in the `examples` folder. No `alloc` featured examples can be called using:
 
-```
+```bash
 cargo run --example pack
 ```
 
 and `alloc` features.
 
-```
+```bash
 cargo run --example alloc_unpack --features="alloc"
-```
-
-```Rust
-use std::process;
-
-use meatpack::{MeatPackResult, Packer, Unpacker};
-
-fn main() {
-	let gcode = "M73 P0 R3
-M73 Q0 S3 ; Hello
-M201 X4000 Y4000 Z200 E2500
-M203 X300 Y300 Z40 E100
-M204 P4000 R1200 T4000
-";
-	let mut packer = Packer::<64>::default();
-	let mut out: Vec<u8> = vec![];
-
-	out.extend(packer.header());
-
-	for byte in gcode.as_bytes() {
-		let packed = packer.pack(byte);
-		match packed {
-			Ok(MeatPackResult::Line(line)) => {
-				println!("{:?}", line);
-				out.extend(line);
-			}
-			Ok(MeatPackResult::WaitingForNextByte) => {}
-			Err(e) => println!("{:?}", e),
-		}
-	}
-
-	println!("{:?}", out);
-
-	let mut unpacker = Unpacker::<64>::default();
-	for byte in out {
-		let res = unpacker.unpack(&byte);
-		match res {
-			Ok(MeatPackResult::WaitingForNextByte) => {}
-			Ok(MeatPackResult::Line(line)) => {
-				// If in std.
-				for byte in line {
-					let c = char::from(*byte);
-					print!("{}", c);
-				}
-			}
-			Err(e) => {
-				println!("{:?}", e);
-				process::exit(0)
-			}
-		}
-	}
-}
 ```
 
 
 # References
 
-- <https://github.com/scottmudge/OctoPrint-MeatPack>
-- <https://github.com/prusa3d/libbgcode/blob/main/src/LibBGCode/binarize/meatpack.cpp>
-- <https://github.com/scottmudge/Prusa-Firmware-MeatPack/blob/MK3_sm_MeatPack/Firmware/meatpack.cpp>
+- https://github.com/scottmudge/OctoPrint-MeatPack
+- https://github.com/sponsors/jamesgopsill
+- https://github.com/prusa3d/libbgcode/blob/main/src/LibBGCode/binarize/meatpack.cpp
+- https://github.com/scottmudge/Prusa-Firmware-MeatPack/blob/MK3_sm_MeatPack/Firmware/meatpack.cpp
+
+[1]: https://github.com/scottmudge/OctoPrint-MeatPack
+[2]: https://github.com/sponsors/jamesgopsill
+[3]: https://github.com/prusa3d/libbgcode/blob/main/src/LibBGCode/binarize/meatpack.cpp
+[4]:  https://github.com/scottmudge/Prusa-Firmware-MeatPack/blob/MK3_sm_MeatPack/Firmware/meatpack.cpp
