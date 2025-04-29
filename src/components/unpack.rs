@@ -1,5 +1,5 @@
 use crate::components::meat::{
-    determine_command, is_signal_byte, unpack_byte, MeatPackCommand, MeatPackError, MeatPackResult,
+    determine_command, is_signal_byte, MeatPackCommand, MeatPackError, MeatPackResult, Pack,
 };
 
 #[cfg(feature = "alloc")]
@@ -89,7 +89,7 @@ impl<const S: usize> Unpacker<S> {
                 }
             }
             UnpackerState::Enabled => {
-                let (upper, lower) = unpack_byte(byte, self.no_spaces)?;
+                let (upper, lower) = byte.unpack(self.no_spaces)?;
 
                 // Upper, lower
                 // Check if we need to wait for a

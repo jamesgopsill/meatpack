@@ -1,9 +1,63 @@
 pub static SIGNAL_BYTE: u8 = 255;
 pub static PACKING_ENABLED_BYTE: u8 = 251;
-pub static LINEFEED_BYTE: u8 = 10;
-pub static COMMENT_START_BYTE: u8 = 59;
+pub static LINEFEED_BYTE: u8 = b'\n';
+pub static COMMENT_START_BYTE: u8 = b';';
+pub static FULLWIDTH_BYTE: u8 = 0b1111;
 pub static MEATPACK_HEADER: [u8; 3] = [SIGNAL_BYTE, SIGNAL_BYTE, PACKING_ENABLED_BYTE];
 
+/// The pack trait that provide the ability
+/// to pack an item into a 4-bit meatpack
+/// representation.
+pub trait Pack {
+    /// Will pack into a 4-bit representation or return
+    /// an Err stating the item is a full width character.
+    fn pack(
+        &self,
+        no_spaces: bool,
+    ) -> Result<u8, MeatPackError>;
+
+    // Unpacks the item into two 8-bit values.
+    fn unpack(
+        &self,
+        no_spaces: bool,
+    ) -> Result<(u8, u8), MeatPackError>;
+}
+
+/// Implementation of pack for a u8.
+impl Pack for u8 {
+    fn pack(
+        &self,
+        no_spaces: bool,
+    ) -> Result<u8, MeatPackError> {
+        forward_lookup(self, no_spaces)
+    }
+
+    fn unpack(
+        &self,
+        no_spaces: bool,
+    ) -> Result<(u8, u8), MeatPackError> {
+        unpack_byte(self, no_spaces)
+    }
+}
+
+/// Enable packing of items (u4s) into a meatpacked u8.
+pub trait PackTuple {
+    fn pack(&self) -> Result<u8, MeatPackError>;
+}
+
+impl PackTuple for (u8, u8) {
+    fn pack(&self) -> Result<u8, MeatPackError> {
+        if self.0 > 15u8 || self.1 > 15u8 {
+            return Err(MeatPackError::InvalidByte);
+        }
+        let packed = self.0 << 4;
+        Ok(packed ^ self.1)
+    }
+}
+
+/// Used in the Packer and Unpacker to inform the
+/// user whether a line has been omitted or more
+/// bytes are required.
 pub enum MeatPackResult<'a> {
     WaitingForNextByte,
     Line(&'a [u8]),
@@ -184,7 +238,7 @@ mod test {
     #[test]
     fn test_unpack() {
         let packed: u8 = 0b1101_0001;
-        let (upper, lower) = unpack_byte(&packed, false).unwrap();
+        let (upper, lower) = packed.unpack(false).unwrap();
         assert_eq!(upper, b'G');
         assert_eq!(lower, b'1');
     }
@@ -192,14 +246,14 @@ mod test {
     #[test]
     fn test_pack_packable() {
         let packable: u8 = b'0';
-        let packed = forward_lookup(&packable, false).unwrap();
+        let packed = packable.pack(false).unwrap();
         assert_eq!(packed, 0u8);
     }
 
     #[test]
     fn test_pack_unpackable() {
-        let packable: u8 = b'T';
-        let packed = forward_lookup(&packable, false);
+        let unpackable: u8 = b'T';
+        let packed = unpackable.pack(false);
         assert!(packed.is_err());
     }
 }

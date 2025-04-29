@@ -1,5 +1,6 @@
 use crate::components::meat::{
-    forward_lookup, MeatPackError, MeatPackResult, COMMENT_START_BYTE, LINEFEED_BYTE,
+    forward_lookup, MeatPackError, MeatPackResult, Pack, PackTuple, COMMENT_START_BYTE,
+    FULLWIDTH_BYTE, LINEFEED_BYTE,
 };
 
 #[cfg(feature = "alloc")]
@@ -60,10 +61,12 @@ impl<const S: usize> Packer<S> {
 
         match (self.lower, b) {
             // Special case requiring \n\n.
-            (None, 10) => {
-                let upper_and_lower = forward_lookup(&10, self.no_spaces).unwrap();
-                let p = self.pack_bytes(upper_and_lower, upper_and_lower);
-                self.push(p)?;
+            (None, b'\n') => {
+                //let upper_and_lower = forward_lookup(&10, self.no_spaces).unwrap();
+                let upper = b'\n'.pack(self.no_spaces).unwrap();
+                let lower = b'\n'.pack(self.no_spaces).unwrap();
+                let packed_byte = (upper, lower).pack().unwrap();
+                self.push(packed_byte)?;
                 self.clear = true;
                 // Remove empty lines.
                 if self.pos > 1 {
@@ -73,7 +76,7 @@ impl<const S: usize> Packer<S> {
                 }
             }
             // Start of a new byte to pack.
-            (None, b) => match forward_lookup(b, self.no_spaces) {
+            (None, b) => match b.pack(self.no_spaces) {
                 // Packable byte
                 Ok(lower) => {
                     self.lower = Some(lower);
@@ -88,10 +91,10 @@ impl<const S: usize> Packer<S> {
                 }
             },
             // fullwidth + \n
-            (Some(0b1111), 10) => {
-                let upper = forward_lookup(&10, self.no_spaces).unwrap();
-                let p = self.pack_bytes(upper, 0b1111);
-                self.push(p)?;
+            (Some(0b1111), b'\n') => {
+                let upper = b'\n'.pack(self.no_spaces).unwrap();
+                let packed_byte = (upper, FULLWIDTH_BYTE).pack().unwrap();
+                self.push(packed_byte)?;
                 self.push(self.fullwidth.unwrap())?;
                 self.lower = None;
                 self.fullwidth = None;
@@ -102,8 +105,8 @@ impl<const S: usize> Packer<S> {
             (Some(0b1111), b) => match forward_lookup(b, self.no_spaces) {
                 // Packable byte
                 Ok(upper) => {
-                    let p = self.pack_bytes(upper, 0b1111);
-                    self.push(p)?;
+                    let packed_byte = (upper, FULLWIDTH_BYTE).pack().unwrap();
+                    self.push(packed_byte)?;
                     self.push(self.fullwidth.unwrap())?;
                     self.lower = None;
                     self.fullwidth = None;
@@ -111,8 +114,10 @@ impl<const S: usize> Packer<S> {
                 }
                 // Fullwidth byte
                 Err(_) => {
-                    let p = self.pack_bytes(0b1111, 0b1111);
-                    self.push(p)?;
+                    // Equivalent to a SIGNAL BYTE but keeping the function for
+                    // readability.
+                    let packed_byte = (FULLWIDTH_BYTE, FULLWIDTH_BYTE).pack().unwrap();
+                    self.push(packed_byte)?;
                     self.push(self.fullwidth.unwrap())?;
                     self.push(*b)?;
                     self.lower = None;
@@ -121,29 +126,29 @@ impl<const S: usize> Packer<S> {
                 }
             },
             // Some packable lower byte with a \n upper.
-            (Some(lower), 10) => {
-                let upper = forward_lookup(b, self.no_spaces).unwrap();
-                let p = self.pack_bytes(upper, lower);
-                self.push(p)?;
+            (Some(lower), b'\n') => {
+                let upper = b.pack(self.no_spaces).unwrap();
+                let packed_bytes = (upper, lower).pack().unwrap();
+                self.push(packed_bytes)?;
                 self.lower = None;
                 self.fullwidth = None;
                 self.clear = true;
                 Ok(MeatPackResult::Line(self.return_slice()))
             }
             // Lower is packable + whatever b is but not a \n
-            (Some(lower), b) => match forward_lookup(b, self.no_spaces) {
+            (Some(lower), b) => match b.pack(self.no_spaces) {
                 // Packable byte
                 Ok(upper) => {
-                    let p = self.pack_bytes(upper, lower);
-                    self.push(p)?;
+                    let packed_byte = (upper, lower).pack().unwrap();
+                    self.push(packed_byte)?;
                     self.lower = None;
                     self.fullwidth = None;
                     Ok(MeatPackResult::WaitingForNextByte)
                 }
                 // Fullwidth byte
                 Err(_) => {
-                    let p = self.pack_bytes(0b1111, lower);
-                    self.push(p)?;
+                    let packed_byte = (FULLWIDTH_BYTE, lower).pack().unwrap();
+                    self.push(packed_byte)?;
                     self.push(*b)?;
                     self.lower = None;
                     self.fullwidth = None;
@@ -176,16 +181,6 @@ impl<const S: usize> Packer<S> {
         self.inner[self.pos] = byte;
         self.pos += 1;
         Ok(())
-    }
-
-    /// Pack two 4-bit representations together.
-    fn pack_bytes(
-        &self,
-        upper: u8,
-        lower: u8,
-    ) -> u8 {
-        let packed = upper << 4;
-        packed ^ lower
     }
 
     /// A utility function to check if any data remains
