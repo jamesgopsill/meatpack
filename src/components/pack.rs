@@ -12,7 +12,7 @@ use alloc::vec::Vec;
 /// lines of meatpacked gcode. Stripping comments
 /// is on by default and empty lines are omitted.
 pub struct Packer<const S: usize> {
-    lower: Option<u8>,
+    least: Option<u8>,
     fullwidth: Option<u8>,
     clear: bool,
     no_spaces: bool,
@@ -26,7 +26,7 @@ impl<const S: usize> Default for Packer<S> {
     /// The default implementation of a Packer.
     fn default() -> Self {
         Self {
-            lower: None,
+            least: None,
             fullwidth: None,
             clear: false,
             no_spaces: false,
@@ -59,13 +59,13 @@ impl<const S: usize> Packer<S> {
             }
         }
 
-        match (self.lower, b) {
+        match (self.least, b) {
             // Special case requiring \n\n.
             (None, b'\n') => {
-                //let upper_and_lower = forward_lookup(&10, self.no_spaces).unwrap();
-                let upper = b'\n'.pack(self.no_spaces).unwrap();
-                let lower = b'\n'.pack(self.no_spaces).unwrap();
-                let packed_byte = (upper, lower).pack().unwrap();
+                //let most_and_least = forward_lookup(&10, self.no_spaces).unwrap();
+                let most = b'\n'.pack(self.no_spaces).unwrap();
+                let least = b'\n'.pack(self.no_spaces).unwrap();
+                let packed_byte = (most, least).pack().unwrap();
                 self.push(packed_byte)?;
                 self.clear = true;
                 // Remove empty lines.
@@ -78,25 +78,25 @@ impl<const S: usize> Packer<S> {
             // Start of a new byte to pack.
             (None, b) => match b.pack(self.no_spaces) {
                 // Packable byte
-                Ok(lower) => {
-                    self.lower = Some(lower);
+                Some(least) => {
+                    self.least = Some(least);
                     self.fullwidth = None;
                     Ok(MeatPackResult::WaitingForNextByte)
                 }
                 // Fullwidth byte
-                Err(_) => {
-                    self.lower = Some(0b1111);
+                None => {
+                    self.least = Some(0b1111);
                     self.fullwidth = Some(*b);
                     Ok(MeatPackResult::WaitingForNextByte)
                 }
             },
             // fullwidth + \n
             (Some(0b1111), b'\n') => {
-                let upper = b'\n'.pack(self.no_spaces).unwrap();
-                let packed_byte = (upper, FULLWIDTH_BYTE).pack().unwrap();
+                let most = b'\n'.pack(self.no_spaces).unwrap();
+                let packed_byte = (most, FULLWIDTH_BYTE).pack().unwrap();
                 self.push(packed_byte)?;
                 self.push(self.fullwidth.unwrap())?;
-                self.lower = None;
+                self.least = None;
                 self.fullwidth = None;
                 self.clear = true;
                 Ok(MeatPackResult::Line(self.return_slice()))
@@ -104,53 +104,53 @@ impl<const S: usize> Packer<S> {
             // Full width + some other b byte that is not a \n
             (Some(0b1111), b) => match forward_lookup(b, self.no_spaces) {
                 // Packable byte
-                Ok(upper) => {
-                    let packed_byte = (upper, FULLWIDTH_BYTE).pack().unwrap();
+                Some(most) => {
+                    let packed_byte = (most, FULLWIDTH_BYTE).pack().unwrap();
                     self.push(packed_byte)?;
                     self.push(self.fullwidth.unwrap())?;
-                    self.lower = None;
+                    self.least = None;
                     self.fullwidth = None;
                     Ok(MeatPackResult::WaitingForNextByte)
                 }
                 // Fullwidth byte
-                Err(_) => {
+                None => {
                     // Equivalent to a SIGNAL BYTE but keeping the function for
                     // readability.
                     let packed_byte = (FULLWIDTH_BYTE, FULLWIDTH_BYTE).pack().unwrap();
                     self.push(packed_byte)?;
                     self.push(self.fullwidth.unwrap())?;
                     self.push(*b)?;
-                    self.lower = None;
+                    self.least = None;
                     self.fullwidth = None;
                     Ok(MeatPackResult::WaitingForNextByte)
                 }
             },
-            // Some packable lower byte with a \n upper.
-            (Some(lower), b'\n') => {
-                let upper = b.pack(self.no_spaces).unwrap();
-                let packed_bytes = (upper, lower).pack().unwrap();
+            // Some packable least byte with a \n most.
+            (Some(least), b'\n') => {
+                let most = b.pack(self.no_spaces).unwrap();
+                let packed_bytes = (most, least).pack().unwrap();
                 self.push(packed_bytes)?;
-                self.lower = None;
+                self.least = None;
                 self.fullwidth = None;
                 self.clear = true;
                 Ok(MeatPackResult::Line(self.return_slice()))
             }
-            // Lower is packable + whatever b is but not a \n
-            (Some(lower), b) => match b.pack(self.no_spaces) {
+            // least is packable + whatever b is but not a \n
+            (Some(least), b) => match b.pack(self.no_spaces) {
                 // Packable byte
-                Ok(upper) => {
-                    let packed_byte = (upper, lower).pack().unwrap();
+                Some(most) => {
+                    let packed_byte = (most, least).pack().unwrap();
                     self.push(packed_byte)?;
-                    self.lower = None;
+                    self.least = None;
                     self.fullwidth = None;
                     Ok(MeatPackResult::WaitingForNextByte)
                 }
                 // Fullwidth byte
-                Err(_) => {
-                    let packed_byte = (FULLWIDTH_BYTE, lower).pack().unwrap();
+                None => {
+                    let packed_byte = (FULLWIDTH_BYTE, least).pack().unwrap();
                     self.push(packed_byte)?;
                     self.push(*b)?;
-                    self.lower = None;
+                    self.least = None;
                     self.fullwidth = None;
                     Ok(MeatPackResult::WaitingForNextByte)
                 }

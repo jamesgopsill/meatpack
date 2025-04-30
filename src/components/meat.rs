@@ -1,8 +1,10 @@
+use thiserror::Error;
+
 pub static SIGNAL_BYTE: u8 = 255;
 pub static PACKING_ENABLED_BYTE: u8 = 251;
 pub static LINEFEED_BYTE: u8 = b'\n';
 pub static COMMENT_START_BYTE: u8 = b';';
-pub static FULLWIDTH_BYTE: u8 = 0b1111;
+pub static FULLWIDTH_BYTE: u8 = 0b0000_1111;
 pub static MEATPACK_HEADER: [u8; 3] = [SIGNAL_BYTE, SIGNAL_BYTE, PACKING_ENABLED_BYTE];
 
 /// The pack trait that provide the ability
@@ -14,13 +16,13 @@ pub trait Pack {
     fn pack(
         &self,
         no_spaces: bool,
-    ) -> Result<u8, MeatPackError>;
+    ) -> Option<u8>;
 
     // Unpacks the item into two 8-bit values.
     fn unpack(
         &self,
         no_spaces: bool,
-    ) -> Result<(u8, u8), MeatPackError>;
+    ) -> (u8, u8);
 }
 
 /// Implementation of pack for a u8.
@@ -28,14 +30,14 @@ impl Pack for u8 {
     fn pack(
         &self,
         no_spaces: bool,
-    ) -> Result<u8, MeatPackError> {
+    ) -> Option<u8> {
         forward_lookup(self, no_spaces)
     }
 
     fn unpack(
         &self,
         no_spaces: bool,
-    ) -> Result<(u8, u8), MeatPackError> {
+    ) -> (u8, u8) {
         unpack_byte(self, no_spaces)
     }
 }
@@ -47,8 +49,11 @@ pub trait PackTuple {
 
 impl PackTuple for (u8, u8) {
     fn pack(&self) -> Result<u8, MeatPackError> {
-        if self.0 > 15u8 || self.1 > 15u8 {
-            return Err(MeatPackError::InvalidByte);
+        if self.0 > 15u8 {
+            return Err(MeatPackError::InvalidByte(self.0));
+        }
+        if self.1 > 15u8 {
+            return Err(MeatPackError::InvalidByte(self.1));
         }
         let packed = self.0 << 4;
         Ok(packed ^ self.1)
@@ -64,13 +69,17 @@ pub enum MeatPackResult<'a> {
 }
 
 /// A set of possible error codes from the MeatPack crate.
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum MeatPackError {
-    InvalidByte,
+    #[error("Invalid byte: Recevied: {0}")]
+    InvalidByte(u8),
+    #[error("The packer is in an invalid state.")]
     InvalidState,
-    InvalidCommandByte,
+    #[error("Invalid command byte. Received: {0}.")]
+    InvalidCommandByte(u8),
+    #[error("The buffer is full.")]
     BufferFull,
-    FullWidthByte,
+    #[error("Unterminated line. {0} bytes remain in the buffer.")]
     UnterminatedLine(usize),
 }
 
@@ -110,7 +119,7 @@ pub const fn determine_command(byte: &u8) -> Result<MeatPackCommand, MeatPackErr
         250 => Ok(MeatPackCommand::PackingDisabled),
         251 => Ok(MeatPackCommand::PackingEnabled),
         255 => Ok(MeatPackCommand::SignalByte),
-        _ => Err(MeatPackError::InvalidCommandByte),
+        b => Err(MeatPackError::InvalidCommandByte(*b)),
     }
 }
 
@@ -123,19 +132,21 @@ pub const fn is_signal_byte(byte: &u8) -> bool {
 pub fn unpack_byte(
     byte: &u8,
     no_spaces: bool,
-) -> Result<(u8, u8), MeatPackError> {
+) -> (u8, u8) {
     // Process the 8-bit as two 4-bit values.
     // 4-bits still exist within a u8.
     let mut unpacked: (u8, u8) = (0, 0);
+    // Take the 4 most significant bits.
     // e.g. 0111_0010 >> 4 -> 0000_0111
-    let upper = byte >> 4;
-    let u = reverse_lookup(&upper, no_spaces)?;
+    let most = byte >> 4;
+    let u = reverse_lookup(&most, no_spaces).unwrap();
     unpacked.0 = u;
+    // Take the 4 least significant bits.
     // e.g., 0111_0010 << 4 -> 0010_0000 -> 0000_0010
-    let lower = byte << 4 >> 4;
-    let u = reverse_lookup(&lower, no_spaces)?;
+    let least = byte << 4 >> 4;
+    let u = reverse_lookup(&least, no_spaces).unwrap();
     unpacked.1 = u;
-    Ok(unpacked)
+    unpacked
 }
 
 /// Provides the lookup table for the 4-bit combinations and their 8-bit counterparts. `0b1011` has different intepretations depending on whether `no_spaces` has been enabled or disabled.
@@ -165,31 +176,31 @@ pub fn unpack_byte(
 pub const fn reverse_lookup(
     byte: &u8,
     no_spaces: bool,
-) -> Result<u8, MeatPackError> {
+) -> Option<u8> {
     match byte {
-        0b0000_0000 => Ok(b'0'),
-        0b0000_0001 => Ok(b'1'),
-        0b0000_0010 => Ok(b'2'),
-        0b0000_0011 => Ok(b'3'),
-        0b0000_0100 => Ok(b'4'),
-        0b0000_0101 => Ok(b'5'),
-        0b0000_0110 => Ok(b'6'),
-        0b0000_0111 => Ok(b'7'),
-        0b0000_1000 => Ok(b'8'),
-        0b0000_1001 => Ok(b'9'),
-        0b0000_1010 => Ok(b'.'),
+        0b0000_0000 => Some(b'0'),
+        0b0000_0001 => Some(b'1'),
+        0b0000_0010 => Some(b'2'),
+        0b0000_0011 => Some(b'3'),
+        0b0000_0100 => Some(b'4'),
+        0b0000_0101 => Some(b'5'),
+        0b0000_0110 => Some(b'6'),
+        0b0000_0111 => Some(b'7'),
+        0b0000_1000 => Some(b'8'),
+        0b0000_1001 => Some(b'9'),
+        0b0000_1010 => Some(b'.'),
         0b0000_1011 => {
             if no_spaces {
-                Ok(b'E')
+                Some(b'E')
             } else {
-                Ok(b' ')
+                Some(b' ')
             }
         }
-        0b0000_1100 => Ok(b'\n'),
-        0b0000_1101 => Ok(b'G'),
-        0b0000_1110 => Ok(b'X'),
-        0b0000_1111 => Ok(0),
-        _ => Err(MeatPackError::InvalidByte),
+        0b0000_1100 => Some(b'\n'),
+        0b0000_1101 => Some(b'G'),
+        0b0000_1110 => Some(b'X'),
+        0b0000_1111 => Some(0),
+        _ => None,
     }
 }
 
@@ -197,37 +208,37 @@ pub const fn reverse_lookup(
 pub const fn forward_lookup(
     byte: &u8,
     no_spaces: bool,
-) -> Result<u8, MeatPackError> {
+) -> Option<u8> {
     match byte {
-        b'0' => Ok(0b0000_0000),
-        b'1' => Ok(0b0000_0001),
-        b'2' => Ok(0b0000_0010),
-        b'3' => Ok(0b0000_0011),
-        b'4' => Ok(0b0000_0100),
-        b'5' => Ok(0b0000_0101),
-        b'6' => Ok(0b0000_0110),
-        b'7' => Ok(0b0000_0111),
-        b'8' => Ok(0b0000_1000),
-        b'9' => Ok(0b0000_1001),
-        b'.' => Ok(0b0000_1010),
+        b'0' => Some(0b0000_0000),
+        b'1' => Some(0b0000_0001),
+        b'2' => Some(0b0000_0010),
+        b'3' => Some(0b0000_0011),
+        b'4' => Some(0b0000_0100),
+        b'5' => Some(0b0000_0101),
+        b'6' => Some(0b0000_0110),
+        b'7' => Some(0b0000_0111),
+        b'8' => Some(0b0000_1000),
+        b'9' => Some(0b0000_1001),
+        b'.' => Some(0b0000_1010),
         b'E' => {
             if no_spaces {
-                Ok(0b0000_1011)
+                Some(0b0000_1011)
             } else {
-                Err(MeatPackError::FullWidthByte)
+                None
             }
         }
         b' ' => {
             if no_spaces {
-                Err(MeatPackError::FullWidthByte)
+                None
             } else {
-                Ok(0b0000_1011)
+                Some(0b0000_1011)
             }
         }
-        b'\n' => Ok(0b0000_1100),
-        b'G' => Ok(0b0000_1101),
-        b'X' => Ok(0b0000_1110),
-        _ => Err(MeatPackError::FullWidthByte),
+        b'\n' => Some(0b0000_1100),
+        b'G' => Some(0b0000_1101),
+        b'X' => Some(0b0000_1110),
+        _ => None,
     }
 }
 
@@ -238,9 +249,9 @@ mod test {
     #[test]
     fn test_unpack() {
         let packed: u8 = 0b1101_0001;
-        let (upper, lower) = packed.unpack(false).unwrap();
-        assert_eq!(upper, b'G');
-        assert_eq!(lower, b'1');
+        let (most, least) = packed.unpack(false);
+        assert_eq!(most, b'G');
+        assert_eq!(least, b'1');
     }
 
     #[test]
@@ -254,6 +265,6 @@ mod test {
     fn test_pack_unpackable() {
         let unpackable: u8 = b'T';
         let packed = unpackable.pack(false);
-        assert!(packed.is_err());
+        assert!(packed.is_none());
     }
 }

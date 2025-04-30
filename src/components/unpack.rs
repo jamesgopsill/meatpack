@@ -89,35 +89,35 @@ impl<const S: usize> Unpacker<S> {
                 }
             }
             UnpackerState::Enabled => {
-                let (upper, lower) = byte.unpack(self.no_spaces)?;
+                let (most, least) = byte.unpack(self.no_spaces);
 
-                // Upper, lower
+                // most, least
                 // Check if we need to wait for a
                 // fullwidth byte.
-                match (upper, lower) {
+                match (most, least) {
                     // \n\n packed byte. Just return one \n
                     (10, 10) => {
                         self.push(&10)?;
                     }
-                    // upper is a full width byte
+                    // most is a full width byte
                     (0, 1..) => {
-                        self.push(&lower)?;
+                        self.push(&least)?;
                         self.state = UnpackerState::RightFullWidthByte;
                     }
-                    // lower is a full width byte
+                    // least is a full width byte
                     (1.., 0) => {
-                        self.push(&lower)?;
-                        self.push(&upper)?;
+                        self.push(&least)?;
+                        self.push(&most)?;
                         self.state = UnpackerState::LeftFullWidthByte;
                     }
                     // Should be dealt with by the command bytes section.
                     (0, 0) => {
-                        return Err(MeatPackError::InvalidByte);
+                        unreachable!();
                     }
                     // Two unpacked packable bytes.
-                    (upper, lower) => {
-                        self.push(&lower)?;
-                        self.push(&upper)?;
+                    (most, least) => {
+                        self.push(&least)?;
+                        self.push(&most)?;
                     }
                 }
 

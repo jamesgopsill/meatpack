@@ -30,4 +30,5 @@ name = "alloc_unpack"
 required-features = ["alloc"]
 
 [dependencies]
+thiserror = { version = "2.0.12", default-features = false }
 clap = { version = "4.5.35", features = ["derive"] }
