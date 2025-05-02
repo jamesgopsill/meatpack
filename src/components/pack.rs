@@ -39,6 +39,20 @@ impl<const S: usize> Default for Packer<S> {
 }
 
 impl<const S: usize> Packer<S> {
+    /// Create a new instance of the packer
+    pub fn new(strip_comments: bool) -> Self {
+        Self {
+            least: None,
+            fullwidth: None,
+            clear: false,
+            no_spaces: false,
+            strip_comments,
+            comment_flag: false,
+            pos: 0,
+            inner: [0u8; S],
+        }
+    }
+
     /// Pack a byte into the current line.
     pub fn pack(
         &mut self,
@@ -63,9 +77,15 @@ impl<const S: usize> Packer<S> {
             // Special case requiring \n\n.
             (None, b'\n') => {
                 //let most_and_least = forward_lookup(&10, self.no_spaces).unwrap();
-                let most = b'\n'.pack(self.no_spaces).unwrap();
-                let least = b'\n'.pack(self.no_spaces).unwrap();
-                let packed_byte = (most, least).pack().unwrap();
+                let most = b'\n'
+                    .pack(self.no_spaces)
+                    .expect(r"Expect \n to return 0b0000_1100");
+                let least = b'\n'
+                    .pack(self.no_spaces)
+                    .expect(r"Expect \n to return 0b0000_1100");
+                let packed_byte = (most, least)
+                    .pack()
+                    .expect("Should pack as we have provided to two known packables.");
                 self.push(packed_byte)?;
                 self.clear = true;
                 // Remove empty lines.
@@ -92,8 +112,12 @@ impl<const S: usize> Packer<S> {
             },
             // fullwidth + \n
             (Some(0b1111), b'\n') => {
-                let most = b'\n'.pack(self.no_spaces).unwrap();
-                let packed_byte = (most, FULLWIDTH_BYTE).pack().unwrap();
+                let most = b'\n'
+                    .pack(self.no_spaces)
+                    .expect(r"Expected \n to return 0b0000_1100");
+                let packed_byte = (most, FULLWIDTH_BYTE)
+                    .pack()
+                    .expect("Should pack as we have provided to two packed chars.");
                 self.push(packed_byte)?;
                 self.push(self.fullwidth.unwrap())?;
                 self.least = None;
@@ -105,7 +129,9 @@ impl<const S: usize> Packer<S> {
             (Some(0b1111), b) => match forward_lookup(b, self.no_spaces) {
                 // Packable byte
                 Some(most) => {
-                    let packed_byte = (most, FULLWIDTH_BYTE).pack().unwrap();
+                    let packed_byte = (most, FULLWIDTH_BYTE)
+                        .pack()
+                        .expect("Should pack as we have provided to two packed chars.");
                     self.push(packed_byte)?;
                     self.push(self.fullwidth.unwrap())?;
                     self.least = None;
@@ -116,7 +142,9 @@ impl<const S: usize> Packer<S> {
                 None => {
                     // Equivalent to a SIGNAL BYTE but keeping the function for
                     // readability.
-                    let packed_byte = (FULLWIDTH_BYTE, FULLWIDTH_BYTE).pack().unwrap();
+                    let packed_byte = (FULLWIDTH_BYTE, FULLWIDTH_BYTE)
+                        .pack()
+                        .expect("Should pack as we have provided to two packed chars.");
                     self.push(packed_byte)?;
                     self.push(self.fullwidth.unwrap())?;
                     self.push(*b)?;
@@ -127,8 +155,8 @@ impl<const S: usize> Packer<S> {
             },
             // Some packable least byte with a \n most.
             (Some(least), b'\n') => {
-                let most = b.pack(self.no_spaces).unwrap();
-                let packed_bytes = (most, least).pack().unwrap();
+                let most = b.pack(self.no_spaces).expect("Should be packable.");
+                let packed_bytes = (most, least).pack().expect("Should be packable.");
                 self.push(packed_bytes)?;
                 self.least = None;
                 self.fullwidth = None;
@@ -139,7 +167,7 @@ impl<const S: usize> Packer<S> {
             (Some(least), b) => match b.pack(self.no_spaces) {
                 // Packable byte
                 Some(most) => {
-                    let packed_byte = (most, least).pack().unwrap();
+                    let packed_byte = (most, least).pack().expect("Should be packable.");
                     self.push(packed_byte)?;
                     self.least = None;
                     self.fullwidth = None;
@@ -147,7 +175,7 @@ impl<const S: usize> Packer<S> {
                 }
                 // Fullwidth byte
                 None => {
-                    let packed_byte = (FULLWIDTH_BYTE, least).pack().unwrap();
+                    let packed_byte = (FULLWIDTH_BYTE, least).pack().expect("Should be packable.");
                     self.push(packed_byte)?;
                     self.push(*b)?;
                     self.least = None;
@@ -199,9 +227,12 @@ impl<const S: usize> Packer<S> {
     pub fn pack_slice(
         in_buf: &[u8],
         out_buf: &mut Vec<u8>,
+        strip_comments: bool,
     ) -> Result<(), MeatPackError> {
-        out_buf.extend(MEATPACK_HEADER);
-        let mut packer = Packer::<S>::default();
+        out_buf.extend(MEATPACK_HEADER.as_slice());
+
+        let mut packer = Packer::<S>::new(strip_comments);
+
         for b in in_buf {
             match packer.pack(b) {
                 Ok(MeatPackResult::Line(line)) => out_buf.extend(line),
@@ -217,6 +248,7 @@ impl<const S: usize> Packer<S> {
         if packer.data_remains() {
             return Err(MeatPackError::UnterminatedLine(packer.pos));
         }
+
         Ok(())
     }
 }

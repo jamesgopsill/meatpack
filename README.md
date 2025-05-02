@@ -83,6 +83,17 @@ and `alloc` features.
 cargo run --example alloc_unpack --features="alloc"
 ```
 
+# Tests
+
+```bash
+cargo test
+```
+
+and
+
+```bash
+cargo test --features alloc
+```
 
 # References
 
