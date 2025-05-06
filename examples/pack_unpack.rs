@@ -1,6 +1,6 @@
 use std::process;
 
-use meatpack::{MeatPackResult, Packer, Unpacker, MEATPACK_HEADER};
+use meatpack::{MEATPACK_HEADER, MeatPackResult, Packer, Unpacker};
 
 fn main() {
     let gcode = "M73 P0 R3

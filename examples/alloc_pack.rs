@@ -18,7 +18,7 @@ fn main() {
     let mut meat = Vec::new();
 
     // And demonstrate the difference in size
-    Packer::<128>::pack_slice(&gcode, &mut meat, false).unwrap();
+    Packer::<128>::pack_slice(&gcode, &mut meat, false, false).unwrap();
     let gl = gcode.len() as f32;
     let ml = meat.len() as f32;
     let ratio = ml / gl;

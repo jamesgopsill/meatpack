@@ -14,7 +14,7 @@ fn main() {
 
     // Lets pack the gcode.
     let mut meat = Vec::new();
-    Packer::<128>::pack_slice(&gcode, &mut meat, false).unwrap();
+    Packer::<128>::pack_slice(&gcode, &mut meat, false, false).unwrap();
 
     // Demonstrate the difference in size
     let gl = gcode.len() as f32;

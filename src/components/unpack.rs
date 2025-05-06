@@ -1,5 +1,5 @@
 use crate::components::meat::{
-    determine_command, is_signal_byte, MeatPackCommand, MeatPackError, MeatPackResult, Pack,
+    MeatPackCommand, MeatPackError, MeatPackResult, Pack, determine_command, is_signal_byte,
 };
 
 #[cfg(feature = "alloc")]

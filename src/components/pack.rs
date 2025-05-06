@@ -1,6 +1,6 @@
 use crate::components::meat::{
-    forward_lookup, MeatPackError, MeatPackResult, Pack, PackTuple, COMMENT_START_BYTE,
-    FULLWIDTH_BYTE, LINEFEED_BYTE,
+    COMMENT_START_BYTE, FULLWIDTH_BYTE, LINEFEED_BYTE, MeatPackError, MeatPackResult, Pack,
+    PackTuple, forward_lookup,
 };
 
 #[cfg(feature = "alloc")]
@@ -15,7 +15,7 @@ pub struct Packer<const S: usize> {
     least: Option<u8>,
     fullwidth: Option<u8>,
     clear: bool,
-    no_spaces: bool,
+    strip_whitespace: bool,
     strip_comments: bool,
     comment_flag: bool,
     pos: usize,
@@ -29,7 +29,7 @@ impl<const S: usize> Default for Packer<S> {
             least: None,
             fullwidth: None,
             clear: false,
-            no_spaces: false,
+            strip_whitespace: false,
             strip_comments: true,
             comment_flag: false,
             pos: 0,
@@ -40,12 +40,15 @@ impl<const S: usize> Default for Packer<S> {
 
 impl<const S: usize> Packer<S> {
     /// Create a new instance of the packer
-    pub fn new(strip_comments: bool) -> Self {
+    pub fn new(
+        strip_comments: bool,
+        strip_whitespace: bool,
+    ) -> Self {
         Self {
             least: None,
             fullwidth: None,
             clear: false,
-            no_spaces: false,
+            strip_whitespace,
             strip_comments,
             comment_flag: false,
             pos: 0,
@@ -58,9 +61,15 @@ impl<const S: usize> Packer<S> {
         &mut self,
         b: &u8,
     ) -> Result<MeatPackResult, MeatPackError> {
+        // Cleat the buffer if we have been instructed to do so.
         if self.clear {
             self.clear()
         }
+        // Ignore whitespace if we have been instructed to do so.
+        if self.strip_whitespace && [b' ', b'\t'].contains(b) {
+            return Ok(MeatPackResult::WaitingForNextByte);
+        }
+        // Check if strip comments is active and ignore
         if self.strip_comments {
             if *b == COMMENT_START_BYTE {
                 self.comment_flag = true;
@@ -73,15 +82,15 @@ impl<const S: usize> Packer<S> {
             }
         }
 
+        // Match on the possible two bytes we have. One that is intended for the least and most significant ends of a u8.
         match (self.least, b) {
             // Special case requiring \n\n.
             (None, b'\n') => {
-                //let most_and_least = forward_lookup(&10, self.no_spaces).unwrap();
                 let most = b'\n'
-                    .pack(self.no_spaces)
+                    .pack(self.strip_whitespace)
                     .expect(r"Expect \n to return 0b0000_1100");
                 let least = b'\n'
-                    .pack(self.no_spaces)
+                    .pack(self.strip_whitespace)
                     .expect(r"Expect \n to return 0b0000_1100");
                 let packed_byte = (most, least)
                     .pack()
@@ -96,7 +105,7 @@ impl<const S: usize> Packer<S> {
                 }
             }
             // Start of a new byte to pack.
-            (None, b) => match b.pack(self.no_spaces) {
+            (None, b) => match b.pack(self.strip_whitespace) {
                 // Packable byte
                 Some(least) => {
                     self.least = Some(least);
@@ -113,7 +122,7 @@ impl<const S: usize> Packer<S> {
             // fullwidth + \n
             (Some(0b1111), b'\n') => {
                 let most = b'\n'
-                    .pack(self.no_spaces)
+                    .pack(self.strip_whitespace)
                     .expect(r"Expected \n to return 0b0000_1100");
                 let packed_byte = (most, FULLWIDTH_BYTE)
                     .pack()
@@ -126,7 +135,7 @@ impl<const S: usize> Packer<S> {
                 Ok(MeatPackResult::Line(self.return_slice()))
             }
             // Full width + some other b byte that is not a \n
-            (Some(0b1111), b) => match forward_lookup(b, self.no_spaces) {
+            (Some(0b1111), b) => match forward_lookup(b, self.strip_whitespace) {
                 // Packable byte
                 Some(most) => {
                     let packed_byte = (most, FULLWIDTH_BYTE)
@@ -155,7 +164,7 @@ impl<const S: usize> Packer<S> {
             },
             // Some packable least byte with a \n most.
             (Some(least), b'\n') => {
-                let most = b.pack(self.no_spaces).expect("Should be packable.");
+                let most = b.pack(self.strip_whitespace).expect("Should be packable.");
                 let packed_bytes = (most, least).pack().expect("Should be packable.");
                 self.push(packed_bytes)?;
                 self.least = None;
@@ -164,7 +173,7 @@ impl<const S: usize> Packer<S> {
                 Ok(MeatPackResult::Line(self.return_slice()))
             }
             // least is packable + whatever b is but not a \n
-            (Some(least), b) => match b.pack(self.no_spaces) {
+            (Some(least), b) => match b.pack(self.strip_whitespace) {
                 // Packable byte
                 Some(most) => {
                     let packed_byte = (most, least).pack().expect("Should be packable.");
@@ -228,10 +237,24 @@ impl<const S: usize> Packer<S> {
         in_buf: &[u8],
         out_buf: &mut Vec<u8>,
         strip_comments: bool,
+        strip_whitespace: bool,
     ) -> Result<(), MeatPackError> {
-        out_buf.extend(MEATPACK_HEADER.as_slice());
+        use super::meat::NO_SPACES_COMMAND;
 
-        let mut packer = Packer::<S>::new(strip_comments);
+        if in_buf.is_empty() {
+            return Err(MeatPackError::EmptyBuffer);
+        }
+
+        if in_buf.last().unwrap() != &b'\n' {
+            return Err(MeatPackError::UnterminatedBuffer);
+        }
+
+        out_buf.extend(MEATPACK_HEADER.as_slice());
+        if strip_whitespace {
+            out_buf.extend(NO_SPACES_COMMAND.as_slice());
+        }
+
+        let mut packer = Packer::<S>::new(strip_comments, strip_whitespace);
 
         for b in in_buf {
             match packer.pack(b) {

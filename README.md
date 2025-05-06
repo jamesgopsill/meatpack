@@ -95,6 +95,32 @@ and
 cargo test --features alloc
 ```
 
+# Command Line Interface
+
+Meatpack also features a cli to pack and unpack gcode.
+
+```bash
+> meatpack pack --strip-comments --strip-whitespace test_files/box.gcode tmp/box.meat
+
+MeatPack!
+Packing test_files/box.gcode into tmp/box.meat
+Strip Comments: true
+Strip Whitespace: true
+Lines Packed: 2230
+53027 unpacked bytes -> 26407 packed bytes (49.79916%)
+```
+
+```bash
+> meatpack unpack tmp/box.meat tmp/box.gcode
+
+MeatPack!
+Unpacking tmp/box.meat into tmp/box.gcode
+Lines unpacked: 2230
+26413 packed bytes -> 47304 unpacked bytes
+```
+
+*Note. The difference in original to unpacked bytes due to the stripping of comments and whitespace.
+
 # References
 
 - https://github.com/scottmudge/OctoPrint-MeatPack

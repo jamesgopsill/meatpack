@@ -2,10 +2,12 @@ use thiserror::Error;
 
 pub static SIGNAL_BYTE: u8 = 255;
 pub static PACKING_ENABLED_BYTE: u8 = 251;
+pub static ENABLE_NO_SPACES: u8 = 247;
 pub static LINEFEED_BYTE: u8 = b'\n';
 pub static COMMENT_START_BYTE: u8 = b';';
 pub static FULLWIDTH_BYTE: u8 = 0b0000_1111;
 pub static MEATPACK_HEADER: [u8; 3] = [SIGNAL_BYTE, SIGNAL_BYTE, PACKING_ENABLED_BYTE];
+pub static NO_SPACES_COMMAND: [u8; 3] = [SIGNAL_BYTE, SIGNAL_BYTE, ENABLE_NO_SPACES];
 
 /// The pack trait that provide the ability
 /// to pack an item into a 4-bit meatpack
@@ -81,6 +83,10 @@ pub enum MeatPackError {
     BufferFull,
     #[error("Unterminated line. {0} bytes remain in the buffer.")]
     UnterminatedLine(usize),
+    #[error("Empty Buffer")]
+    EmptyBuffer,
+    #[error(r"Unterminated buffer. Expected the in buffer to terminate with a \n.")]
+    UnterminatedBuffer,
 }
 
 /// An enum detailing all the available Meatpack commands.
