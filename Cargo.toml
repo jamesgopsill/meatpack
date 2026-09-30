@@ -11,6 +11,12 @@ keywords = ["gcode", "no_std", "MEX", "FDM", "3d_printing"]
 [features]
 default = []
 alloc = []
+cli = ["dep:clap"]
+
+[[bin]]
+name = "meatpack"
+path = "src/main.rs"
+required-features = ["cli"]
 
 [[example]]
 name = "pack"
@@ -30,5 +36,5 @@ name = "alloc_unpack"
 required-features = ["alloc"]
 
 [dependencies]
-thiserror = { version = "2.0.12", default-features = false }
-clap = { version = "4.5.35", features = ["derive"] }
+thiserror = { version = "2", default-features = false }
+clap = { version = "4", features = ["derive"], optional = true }

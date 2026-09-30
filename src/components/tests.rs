@@ -21,7 +21,7 @@ M204 P4000 R1200 T4000
     // Feed in the bytes as you receive them and
     // the packer will return completed lines of
     // meatpacked gcode.
-    for byte in gcode.as_bytes() {
+    for byte in gcode.bytes() {
         let packed = packer.pack(byte);
         match packed {
             Ok(MeatPackResult::Line(line)) => {
@@ -39,7 +39,7 @@ M204 P4000 R1200 T4000
 
     // Imagine receiving the bytes from some I/O and we want
     // to construct gcode lines and deal with them as we form them.
-    for byte in out.iter() {
+    for &byte in out.iter() {
         let res = unpacker.unpack(byte);
         match res {
             Ok(MeatPackResult::WaitingForNextByte) => {}
@@ -72,7 +72,7 @@ M204 P4000 R1200 T4000
     // Feed in the bytes as you receive them and
     // the packer will return completed lines of
     // meatpacked gcode.
-    for byte in gcode.as_bytes() {
+    for byte in gcode.as_bytes().iter().copied() {
         let packed = packer.pack(byte);
         match packed {
             Ok(MeatPackResult::Line(line)) => {
@@ -90,7 +90,7 @@ M204 P4000 R1200 T4000
 
     // Imagine receiving the bytes from some I/O and we want
     // to construct gcode lines and deal with them as we form them.
-    for byte in out.iter() {
+    for byte in out.iter().copied() {
         let res = unpacker.unpack(byte);
         match res {
             Ok(MeatPackResult::WaitingForNextByte) => {}

@@ -57,24 +57,24 @@ impl<const S: usize> Packer<S> {
     }
 
     /// Pack a byte into the current line.
-    pub fn pack(
-        &mut self,
-        b: &u8,
-    ) -> Result<MeatPackResult, MeatPackError> {
+    pub fn pack<'a>(
+        &'a mut self,
+        b: u8,
+    ) -> Result<MeatPackResult<'a>, MeatPackError> {
         // Cleat the buffer if we have been instructed to do so.
         if self.clear {
             self.clear()
         }
         // Ignore whitespace if we have been instructed to do so.
-        if self.strip_whitespace && [b' ', b'\t'].contains(b) {
+        if self.strip_whitespace && matches!(b, b' ' | b'\t') {
             return Ok(MeatPackResult::WaitingForNextByte);
         }
         // Check if strip comments is active and ignore
         if self.strip_comments {
-            if *b == COMMENT_START_BYTE {
+            if b == COMMENT_START_BYTE {
                 self.comment_flag = true;
             }
-            if *b == LINEFEED_BYTE {
+            if b == LINEFEED_BYTE {
                 self.comment_flag = false;
             }
             if self.comment_flag {
@@ -115,7 +115,7 @@ impl<const S: usize> Packer<S> {
                 // Fullwidth byte
                 None => {
                     self.least = Some(0b1111);
-                    self.fullwidth = Some(*b);
+                    self.fullwidth = Some(b);
                     Ok(MeatPackResult::WaitingForNextByte)
                 }
             },
@@ -156,7 +156,7 @@ impl<const S: usize> Packer<S> {
                         .expect("Should pack as we have provided to two packed chars.");
                     self.push(packed_byte)?;
                     self.push(self.fullwidth.unwrap())?;
-                    self.push(*b)?;
+                    self.push(b)?;
                     self.least = None;
                     self.fullwidth = None;
                     Ok(MeatPackResult::WaitingForNextByte)
@@ -186,7 +186,7 @@ impl<const S: usize> Packer<S> {
                 None => {
                     let packed_byte = (FULLWIDTH_BYTE, least).pack().expect("Should be packable.");
                     self.push(packed_byte)?;
-                    self.push(*b)?;
+                    self.push(b)?;
                     self.least = None;
                     self.fullwidth = None;
                     Ok(MeatPackResult::WaitingForNextByte)
@@ -256,8 +256,8 @@ impl<const S: usize> Packer<S> {
 
         let mut packer = Packer::<S>::new(strip_comments, strip_whitespace);
 
-        for b in in_buf {
-            match packer.pack(b) {
+        for b in in_buf.iter() {
+            match packer.pack(*b) {
                 Ok(MeatPackResult::Line(line)) => out_buf.extend(line),
                 Ok(MeatPackResult::WaitingForNextByte) => {}
                 Err(e) => return Err(e),

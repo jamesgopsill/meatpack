@@ -1,0 +1,20 @@
+[package]
+name = "meatpack-rp235x-example"
+version = "0.0.1"
+edition = "2024"
+publish = false
+
+[dependencies]
+meatpack = { path = "../.." }
+embassy-rp = { version = "0.10", features = ["rp235xa", "defmt", "time-driver", "critical-section-impl"] }
+embassy-time = "0.5"
+cortex-m = "0.7"
+cortex-m-rt = "0.7"
+defmt = "1"
+defmt-rtt = "1"
+panic-probe = { version = "1", features = ["print-defmt"] }
+
+[profile.release]
+debug = 2
+lto = true
+opt-level = "s"

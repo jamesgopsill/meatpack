@@ -16,7 +16,7 @@ M204 P4000 R1200 T4000
     // Feed in the bytes as you receive them and
     // the packer will return completed lines of
     // meatpacked gcode to send onwards.
-    for byte in gcode.as_bytes() {
+    for byte in gcode.bytes() {
         let packed = packer.pack(byte);
         match packed {
             Ok(MeatPackResult::Line(line)) => {

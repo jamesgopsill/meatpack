@@ -43,10 +43,10 @@ impl<const S: usize> Unpacker<S> {
     /// Unpacks a single meatpacked byte checking on the
     /// history of the previously unpacked items. It returns
     /// detailing what it is waiting for next.
-    pub fn unpack(
-        &mut self,
-        byte: &u8,
-    ) -> Result<MeatPackResult, MeatPackError> {
+    pub fn unpack<'a>(
+        &'a mut self,
+        byte: u8,
+    ) -> Result<MeatPackResult<'a>, MeatPackError> {
         if self.clear {
             self.clear()
         }
@@ -81,7 +81,7 @@ impl<const S: usize> Unpacker<S> {
                 // If a normal new line.
                 // Return the line for further processing.
                 self.push(byte)?;
-                if *byte == 10 {
+                if byte == 10 {
                     self.clear = true; // clear buffer next time round.
                     Ok(MeatPackResult::Line(self.return_slice()))
                 } else {
@@ -97,17 +97,17 @@ impl<const S: usize> Unpacker<S> {
                 match (most, least) {
                     // \n\n packed byte. Just return one \n
                     (10, 10) => {
-                        self.push(&10)?;
+                        self.push(10)?;
                     }
                     // most is a full width byte
                     (0, 1..) => {
-                        self.push(&least)?;
+                        self.push(least)?;
                         self.state = UnpackerState::RightFullWidthByte;
                     }
                     // least is a full width byte
                     (1.., 0) => {
-                        self.push(&least)?;
-                        self.push(&most)?;
+                        self.push(least)?;
+                        self.push(most)?;
                         self.state = UnpackerState::LeftFullWidthByte;
                     }
                     // Should be dealt with by the command bytes section.
@@ -116,8 +116,8 @@ impl<const S: usize> Unpacker<S> {
                     }
                     // Two unpacked packable bytes.
                     (most, least) => {
-                        self.push(&least)?;
-                        self.push(&most)?;
+                        self.push(least)?;
+                        self.push(most)?;
                     }
                 }
 
@@ -155,7 +155,7 @@ impl<const S: usize> Unpacker<S> {
             }
             UnpackerState::LeftFullWidthByte => {
                 self.state = UnpackerState::Enabled;
-                self.inner[self.pos - 2] = *byte;
+                self.inner[self.pos - 2] = byte;
                 if self.inner[self.pos - 1] == 10 {
                     self.clear = true; // clear buffer next time round.
                     return Ok(MeatPackResult::Line(self.return_slice()));
@@ -181,12 +181,12 @@ impl<const S: usize> Unpacker<S> {
     /// Push a byte to the internal buffer.
     fn push(
         &mut self,
-        byte: &u8,
+        byte: u8,
     ) -> Result<(), MeatPackError> {
         if self.pos > S {
             return Err(MeatPackError::BufferFull);
         }
-        self.inner[self.pos] = *byte;
+        self.inner[self.pos] = byte;
         self.pos += 1;
         Ok(())
     }
@@ -240,7 +240,7 @@ impl<const S: usize> Unpacker<S> {
     ) -> Result<(), MeatPackError> {
         let mut unpacker = Unpacker::<S>::default();
         for b in in_buf {
-            match unpacker.unpack(b) {
+            match unpacker.unpack(*b) {
                 Ok(MeatPackResult::Line(line)) => out_buf.extend(line),
                 Ok(MeatPackResult::WaitingForNextByte) => {}
                 Err(e) => return Err(e),

@@ -18,7 +18,7 @@ fn main() {
 
     // Imagine receiving the bytes from some I/O and we want
     // to construct gcode lines and deal with them as we form them.
-    for b in packed.iter() {
+    for b in packed.iter().copied() {
         let res = unpacker.unpack(b);
         match res {
             Ok(MeatPackResult::WaitingForNextByte) => {

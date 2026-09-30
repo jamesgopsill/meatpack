@@ -97,7 +97,13 @@ cargo test --features alloc
 
 # Command Line Interface
 
-Meatpack also features a cli to pack and unpack gcode.
+Meatpack also features a cli to pack and unpack gcode. This can be built using:
+
+```bash
+cargo install meatpack --features cli 
+```
+
+It can then be used as follows:
 
 ```bash
 > meatpack pack --strip-comments --strip-whitespace test_files/box.gcode tmp/box.meat

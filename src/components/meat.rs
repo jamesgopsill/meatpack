@@ -16,13 +16,13 @@ pub trait Pack {
     /// Will pack into a 4-bit representation or return
     /// an Err stating the item is a full width character.
     fn pack(
-        &self,
+        self,
         no_spaces: bool,
     ) -> Option<u8>;
 
     // Unpacks the item into two 8-bit values.
     fn unpack(
-        &self,
+        self,
         no_spaces: bool,
     ) -> (u8, u8);
 }
@@ -30,14 +30,14 @@ pub trait Pack {
 /// Implementation of pack for a u8.
 impl Pack for u8 {
     fn pack(
-        &self,
+        self,
         no_spaces: bool,
     ) -> Option<u8> {
         forward_lookup(self, no_spaces)
     }
 
     fn unpack(
-        &self,
+        self,
         no_spaces: bool,
     ) -> (u8, u8) {
         unpack_byte(self, no_spaces)
@@ -116,7 +116,7 @@ pub enum MeatPackCommand {
 ///
 /// References
 /// - <https://github.com/prusa3d/libbgcode/blob/main/src/LibBGCode/binarize/meatpack.cpp>
-pub const fn determine_command(byte: &u8) -> Result<MeatPackCommand, MeatPackError> {
+pub const fn determine_command(byte: u8) -> Result<MeatPackCommand, MeatPackError> {
     match byte {
         246 => Ok(MeatPackCommand::NoSpacesDisabled),
         247 => Ok(MeatPackCommand::NoSpacesEnabled),
@@ -125,18 +125,18 @@ pub const fn determine_command(byte: &u8) -> Result<MeatPackCommand, MeatPackErr
         250 => Ok(MeatPackCommand::PackingDisabled),
         251 => Ok(MeatPackCommand::PackingEnabled),
         255 => Ok(MeatPackCommand::SignalByte),
-        b => Err(MeatPackError::InvalidCommandByte(*b)),
+        b => Err(MeatPackError::InvalidCommandByte(b)),
     }
 }
 
 /// Checks whether a `u8` is a signal byte `255`.
-pub const fn is_signal_byte(byte: &u8) -> bool {
+pub const fn is_signal_byte(byte: u8) -> bool {
     matches!(byte, 255)
 }
 
 /// Unpacks the 2 x 4-bit meatpack code packed into a u8.
 pub fn unpack_byte(
-    byte: &u8,
+    byte: u8,
     no_spaces: bool,
 ) -> (u8, u8) {
     // Process the 8-bit as two 4-bit values.
@@ -145,12 +145,12 @@ pub fn unpack_byte(
     // Take the 4 most significant bits.
     // e.g. 0111_0010 >> 4 -> 0000_0111
     let most = byte >> 4;
-    let u = reverse_lookup(&most, no_spaces).unwrap();
+    let u = reverse_lookup(most, no_spaces).unwrap();
     unpacked.0 = u;
     // Take the 4 least significant bits.
     // e.g., 0111_0010 << 4 -> 0010_0000 -> 0000_0010
     let least = byte << 4 >> 4;
-    let u = reverse_lookup(&least, no_spaces).unwrap();
+    let u = reverse_lookup(least, no_spaces).unwrap();
     unpacked.1 = u;
     unpacked
 }
@@ -180,7 +180,7 @@ pub fn unpack_byte(
 /// - <https://github.com/prusa3d/libbgcode/blob/main/src/LibBGCode/binarize/meatpack.cpp>
 /// - <https://www.asciitable.com/>
 pub const fn reverse_lookup(
-    byte: &u8,
+    byte: u8,
     no_spaces: bool,
 ) -> Option<u8> {
     match byte {
@@ -212,7 +212,7 @@ pub const fn reverse_lookup(
 
 /// The forward lookup variant of the reverse lookup byte.
 pub const fn forward_lookup(
-    byte: &u8,
+    byte: u8,
     no_spaces: bool,
 ) -> Option<u8> {
     match byte {
