@@ -482,6 +482,9 @@ name = "embedded-io"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9eb1aa714776b75c7e67e1da744b81a129b3ff919c8712b5e1b32252c1f07cc7"
+dependencies = [
+ "defmt",
+]
 
 [[package]]
 name = "embedded-io-async"
@@ -698,6 +701,8 @@ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 name = "meatpack"
 version = "0.0.3"
 dependencies = [
+ "defmt",
+ "embedded-io 0.7.1",
  "thiserror",
 ]
 
@@ -711,6 +716,7 @@ dependencies = [
  "defmt-rtt",
  "embassy-rp",
  "embassy-time",
+ "embedded-io 0.7.1",
  "meatpack",
  "panic-probe",
 ]

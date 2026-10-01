@@ -1,6 +1,4 @@
-use core::str;
-
-use meatpack::{MeatPackResult, Unpacker};
+use meatpack::Unpacker;
 
 fn main() {
     // Some meatpacked gcode
@@ -14,24 +12,14 @@ fn main() {
 
     // Initiliase the packer with buffer size depending
     // on your application
-    let mut unpacker = Unpacker::<64>::default();
+    let mut unpacker = Unpacker::default();
 
-    // Imagine receiving the bytes from some I/O and we want
-    // to construct gcode lines and deal with them as we form them.
-    for b in packed.iter().copied() {
-        let res = unpacker.unpack(b);
-        match res {
-            Ok(MeatPackResult::WaitingForNextByte) => {
-                //println!("Waiting for next byte");
-            }
-            Ok(MeatPackResult::Line(line)) => {
-                let line = str::from_utf8(line).unwrap();
-                println!("{:?}", line);
-            }
-            Err(e) => {
-                println!("{:?}", e);
-                panic!();
-            }
-        }
-    }
+    let mut unpacked: Vec<u8> = Vec::new();
+    let _written = unpacker
+        .unpack_std(&mut packed.as_slice(), &mut unpacked)
+        .unwrap();
+
+    let unpacked = String::from_utf8(unpacked).expect("Should be valid ASCII");
+
+    println!("{unpacked}");
 }

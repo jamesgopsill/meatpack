@@ -1,69 +1,40 @@
-use std::process;
-
-use meatpack::{MEATPACK_HEADER, MeatPackResult, Packer, Unpacker};
+use meatpack::{Packer, Unpacker};
 
 fn main() {
-    let gcode = "M73 P0 R3
-M73 Q0 S3 ; Hello
-M201 X4000 Y4000 Z200 E2500
-M203 X300 Y300 Z40 E100
-M204 P4000 R1200 T4000
-";
+    let gcode = include_str!("../test_files/snippet.gcode");
 
     println!("## IN ##");
-    println!("{}", gcode);
+    println!("{gcode}");
     println!("####");
 
     // Initiliase the packer with buffer size depending
     // on your application
-    let mut packer = Packer::<64>::default();
-    let mut out: Vec<u8> = vec![];
-
-    // This will store the entire packed version of the gcode.
-    // Don't forget the header.
-    out.extend(&MEATPACK_HEADER);
+    let mut packer = Packer::new(false, false);
+    let mut meat: Vec<u8> = vec![];
 
     // Feed in the bytes as you receive them and
     // the packer will return completed lines of
     // meatpacked gcode.
-    for byte in gcode.bytes() {
-        let packed = packer.pack(byte);
-        match packed {
-            Ok(MeatPackResult::Line(line)) => {
-                println!("{:?}", line);
-                out.extend(line);
-            }
-            Ok(MeatPackResult::WaitingForNextByte) => {}
-            Err(e) => println!("{:?}", e),
-        }
-    }
-
-    println!("{:?}", out);
+    let written = packer.pack_std(&mut gcode.as_bytes(), &mut meat).unwrap();
+    println!("Gcode: {} Meat: {}", gcode.len(), written);
 
     println!("## OUT ##");
 
     // Now we create an unpacker to unpack the meatpacked data.
-    let mut unpacker = Unpacker::<64>::default();
+    let mut unpacker = Unpacker::default();
 
     // Imagine receiving the bytes from some I/O and we want
     // to construct gcode lines and deal with them as we form them.
-    for byte in out.iter().copied() {
-        let res = unpacker.unpack(byte);
-        match res {
-            Ok(MeatPackResult::WaitingForNextByte) => {}
-            Ok(MeatPackResult::Line(line)) => {
-                // If in std.
-                for byte in line {
-                    let c = char::from(*byte);
-                    print!("{}", c);
-                }
-            }
-            Err(e) => {
-                println!("{:?}", e);
-                process::exit(0)
-            }
-        }
-    }
+    let mut out: Vec<u8> = Vec::new();
+    let written = unpacker.unpack_std(&mut meat.as_slice(), &mut out).unwrap();
+
+    assert_eq!(written, out.len());
+    assert_eq!(written, gcode.len());
+
+    let unpacked_gcode = String::from_utf8(out).expect("Should be valid ASCII");
+
+    println!("{unpacked_gcode}");
+    assert_eq!(gcode, unpacked_gcode);
 
     println!("####");
 }

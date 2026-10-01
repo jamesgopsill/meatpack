@@ -5,53 +5,23 @@ use crate::{MEATPACK_HEADER, MeatPackResult, Packer, Unpacker};
 
 #[test]
 fn test_pack_unpack_strip_comments_false() {
-    let gcode = "M73 P0 R3
-M73 Q0 S3 ; Hello
-M201 X4000 Y4000 Z200 E2500
-M203 X300 Y300 Z40 E100
-M204 P4000 R1200 T4000
-";
-    let mut packer = Packer::<64>::new(false, false);
-    let mut out: Vec<u8> = Vec::new();
+    let gcode = include_str!("../../test_files/snippet.gcode");
 
-    // This will store the entire packed version of the gcode.
-    // Don't forget the header.
-    out.extend(&MEATPACK_HEADER);
+    let mut packer = Packer::new(false, false);
+    let mut packed: Vec<u8> = Vec::new();
 
-    // Feed in the bytes as you receive them and
-    // the packer will return completed lines of
-    // meatpacked gcode.
-    for byte in gcode.bytes() {
-        let packed = packer.pack(byte);
-        match packed {
-            Ok(MeatPackResult::Line(line)) => {
-                out.extend(line);
-            }
-            Ok(MeatPackResult::WaitingForNextByte) => {}
-            Err(_) => panic!("Should not enter here"),
-        }
-    }
+    let _written = packer.pack_std(&mut gcode.as_bytes(), &mut packed).unwrap();
 
-    // Now we create an unpacker to unpack the meatpacked data.
-    let mut unpacker = Unpacker::<64>::default();
+    let mut unpacker = Unpacker::default();
+    let mut unpacked: Vec<u8> = Vec::new();
 
-    let mut unpacked = String::new();
+    let _written = unpacker
+        .unpack_std(&mut packed.as_slice(), &mut unpacked)
+        .unwrap();
 
-    // Imagine receiving the bytes from some I/O and we want
-    // to construct gcode lines and deal with them as we form them.
-    for &byte in out.iter() {
-        let res = unpacker.unpack(byte);
-        match res {
-            Ok(MeatPackResult::WaitingForNextByte) => {}
-            Ok(MeatPackResult::Line(line)) => {
-                let s = from_utf8(line).unwrap();
-                unpacked.push_str(s);
-            }
-            Err(_) => panic!("Should not enter here"),
-        }
-    }
+    let unpacked = String::from_utf8(unpacked).expect("Should be valid ASCII");
 
-    assert_eq!(gcode, unpacked.as_str())
+    assert_eq!(gcode, unpacked)
 }
 
 #[test]

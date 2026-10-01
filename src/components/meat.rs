@@ -72,6 +72,7 @@ pub enum MeatPackResult<'a> {
 
 /// A set of possible error codes from the MeatPack crate.
 #[derive(Debug, Error)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum MeatPackError {
     #[error("Invalid byte: Recevied: {0}")]
     InvalidByte(u8),
@@ -87,6 +88,15 @@ pub enum MeatPackError {
     EmptyBuffer,
     #[error(r"Unterminated buffer. Expected the in buffer to terminate with a \n.")]
     UnterminatedBuffer,
+    #[error("I/O error: {0}")]
+    Io(embedded_io::ErrorKind),
+}
+
+// Convert any embedded-io error automatically with `?`
+impl<E: embedded_io::Error> From<E> for MeatPackError {
+    fn from(err: E) -> Self {
+        MeatPackError::Io(err.kind())
+    }
 }
 
 /// An enum detailing all the available Meatpack commands.
