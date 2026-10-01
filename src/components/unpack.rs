@@ -26,7 +26,7 @@ pub enum UnpackerState {
 pub struct Unpacker {
     state: UnpackerInternalState,
     strip_whitespace: bool,
-    tmp: u8,
+    held_back: u8,
 }
 
 impl Default for Unpacker {
@@ -35,7 +35,7 @@ impl Default for Unpacker {
         Self {
             state: UnpackerInternalState::Disabled,
             strip_whitespace: false,
-            tmp: 0,
+            held_back: 0,
         }
     }
 }
@@ -107,7 +107,7 @@ impl Unpacker {
                         // Note. need to wait for the next byte to then insert
                         // them in the right order.
                         self.state = UnpackerInternalState::LeftFullWidthByte;
-                        self.tmp = most;
+                        self.held_back = most;
                         Ok(UnpackerState::Unpacked(0))
                     }
                     // Should be dealt with by the command bytes section.
@@ -146,14 +146,44 @@ impl Unpacker {
             }
             UnpackerInternalState::LeftFullWidthByte => {
                 self.state = UnpackerInternalState::Enabled;
-                writer.write(&[byte, self.tmp])?;
-                if self.tmp == 10 {
+                writer.write(&[byte, self.held_back])?;
+                if self.held_back == 10 {
                     Ok(UnpackerState::Line(2))
                 } else {
                     Ok(UnpackerState::Unpacked(2))
                 }
             }
         }
+    }
+
+    pub fn unpack_line(
+        &mut self,
+        reader: &mut impl embedded_io::BufRead,
+        writer: &mut impl embedded_io::Write,
+    ) -> Result<usize, MeatPackError> {
+        let mut written: usize = 0;
+        loop {
+            let buf = reader.fill_buf()?;
+            if buf.is_empty() {
+                break;
+            }
+            for (i, byte) in buf.iter().copied().enumerate() {
+                match self.unpack_byte(byte, writer)? {
+                    UnpackerState::Unpacked(s) => written += s,
+                    UnpackerState::Line(s) => {
+                        written += s;
+                        let read = i + 1;
+                        reader.consume(read);
+                        writer.flush()?;
+                        return Ok(written);
+                    }
+                };
+            }
+            let read = buf.len();
+            reader.consume(read);
+        }
+        writer.flush()?;
+        Ok(written)
     }
 
     pub fn unpack(
@@ -178,19 +208,6 @@ impl Unpacker {
         }
         writer.flush()?;
         Ok(written)
-    }
-
-    #[cfg(feature = "std")]
-    pub fn unpack_std(
-        &mut self,
-        reader: &mut impl std::io::BufRead,
-        writer: &mut impl std::io::Write,
-    ) -> Result<usize, MeatPackError> {
-        use embedded_io_adapters::std::FromStd;
-
-        let mut reader = FromStd::new(reader);
-        let mut writer = FromStd::new(writer);
-        self.unpack(&mut reader, &mut writer)
     }
 
     /// Handles the command byte combinations that

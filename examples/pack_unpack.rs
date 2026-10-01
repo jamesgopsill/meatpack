@@ -15,7 +15,7 @@ fn main() {
     // Feed in the bytes as you receive them and
     // the packer will return completed lines of
     // meatpacked gcode.
-    let written = packer.pack_std(&mut gcode.as_bytes(), &mut meat).unwrap();
+    let written = packer.pack(&mut gcode.as_bytes(), &mut meat).unwrap();
     println!("Gcode: {} Meat: {}", gcode.len(), written);
 
     println!("## OUT ##");
@@ -26,7 +26,7 @@ fn main() {
     // Imagine receiving the bytes from some I/O and we want
     // to construct gcode lines and deal with them as we form them.
     let mut out: Vec<u8> = Vec::new();
-    let written = unpacker.unpack_std(&mut meat.as_slice(), &mut out).unwrap();
+    let written = unpacker.unpack(&mut meat.as_slice(), &mut out).unwrap();
 
     assert_eq!(written, out.len());
     assert_eq!(written, gcode.len());

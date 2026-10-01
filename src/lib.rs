@@ -4,9 +4,6 @@
 #[cfg(test)]
 extern crate std;
 
-#[cfg(feature = "alloc")]
-extern crate alloc;
-
 mod components;
 
 pub use components::meat::MeatPackError;

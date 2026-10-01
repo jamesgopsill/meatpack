@@ -16,7 +16,7 @@ fn main() {
 
     let mut unpacked: Vec<u8> = Vec::new();
     let _written = unpacker
-        .unpack_std(&mut packed.as_slice(), &mut unpacked)
+        .unpack(&mut packed.as_slice(), &mut unpacked)
         .unwrap();
 
     let unpacked = String::from_utf8(unpacked).expect("Should be valid ASCII");

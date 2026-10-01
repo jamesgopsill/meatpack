@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use embedded_io_adapters::std::FromStd;
 use meatpack::{Packer, Unpacker};
 use std::{
     fs::File,
@@ -56,14 +57,14 @@ fn main() -> Result<(), CliError> {
             let mut reader = open_input(input)?;
             let mut writer = open_output(cli.output.as_deref(), cli.force)?;
             let mut packer = Packer::new(*strip_comments, *strip_whitespace);
-            let written = packer.pack_std(&mut reader, &mut writer)?;
+            let written = packer.pack(&mut reader, &mut writer)?;
             eprintln!("Packed {written} bytes");
         }
         Command::Unpack { input } => {
             let mut reader = open_input(input)?;
             let mut writer = open_output(cli.output.as_deref(), cli.force)?;
             let mut unpacker = Unpacker::default();
-            let written = unpacker.unpack_std(&mut reader, &mut writer)?;
+            let written = unpacker.unpack(&mut reader, &mut writer)?;
             eprintln!("Unpacked {written} bytes");
         }
     }
@@ -74,21 +75,21 @@ fn is_stdio(p: &Path) -> bool {
     p == Path::new("-")
 }
 
-pub type GenericReader = Box<dyn std::io::BufRead>;
+pub type GenericReader = Box<dyn embedded_io::BufRead<Error = std::io::Error>>;
 
 /// `binary`: refuse to read from a terminal (unpack reads binary input).
 fn open_input(path: &Path) -> Result<GenericReader, CliError> {
     if is_stdio(path) {
         let stdin = io::stdin();
         // StdinLock already implements BufRead, so no extra BufReader.
-        Ok(Box::new(stdin.lock()))
+        Ok(Box::new(FromStd::new(stdin.lock())))
     } else {
         let file = File::open(path).map_err(|e| CliError::io(path, e))?;
-        Ok(Box::new(BufReader::new(file)))
+        Ok(Box::new(FromStd::new(BufReader::new(file))))
     }
 }
 
-pub type GenericWriter = Box<dyn std::io::Write>;
+pub type GenericWriter = Box<dyn embedded_io::Write<Error = std::io::Error>>;
 
 // Returns the writer, plus the file path (if any) so it can be
 /// removed if processing fails.
@@ -99,7 +100,7 @@ fn open_output(
     match path.filter(|p| !is_stdio(p)) {
         None => {
             let stdout = io::stdout();
-            Ok(Box::new(stdout.lock()))
+            Ok(Box::new(FromStd::new(stdout.lock())))
         }
         Some(p) => {
             let file = if force {
@@ -108,7 +109,7 @@ fn open_output(
                 File::create_new(p) // fails if the file already exists
             }
             .map_err(|e| CliError::io(p, e))?;
-            Ok(Box::new(file))
+            Ok(Box::new(FromStd::new(file)))
         }
     }
 }
