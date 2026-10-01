@@ -1,7 +1,7 @@
 # Meatpack
 
 A pure Rust implementation of Scott Mudge's [MeatPack][1] algorithm.
-The crate works in both `std` and `no_std` environments. Add the `alloc` feature for additional for environments with a heap.
+The crate works in both `std` and `no_std` environments.
 A CLI is provided and bindings for other languages are in the pipeline.
 The `Packer` and `Unpacker` structs are configurable allowing you to set them up according to your embedded system resource constraints.
 
@@ -71,16 +71,10 @@ The following command bytes exist:
 
 # Examples
 
-Examples can be found in the `examples` folder. No `alloc` featured examples can be called using:
+Examples can be found in the `examples` folder. 
 
 ```bash
-cargo run --example pack
-```
-
-and `alloc` features.
-
-```bash
-cargo run --example alloc_unpack --features="alloc"
+cargo run --example pack --features="std"
 ```
 
 # Tests
@@ -89,15 +83,9 @@ cargo run --example alloc_unpack --features="alloc"
 cargo test
 ```
 
-and
-
-```bash
-cargo test --features alloc
-```
-
 # Command Line Interface
 
-Meatpack also features a cli to pack and unpack gcode. This can be built using:
+Meatpack also features a cli to pack and unpack gcode. It accepts `stdin` and file input and outputs to `stdout` and files. This can be built using:
 
 ```bash
 cargo install meatpack --features cli 
