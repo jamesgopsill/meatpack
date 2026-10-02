@@ -7,6 +7,7 @@ description = "A Rust implementation of the MeatPack algorithm for encoding gcod
 repository = "https://github.com/jamesgopsill/meatpack"
 readme = "README.md"
 keywords = ["gcode", "no_std", "MEX", "FDM", "3d_printing"]
+include = ["/src", "/README.md", "/LICENSE"]
 
 [features]
 default = []

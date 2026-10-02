@@ -16,6 +16,8 @@ enum UnpackerInternalState {
     Disabled,
 }
 
+/// Reports whether we have unpacked some bytes or
+/// reached a new line.
 pub enum UnpackerState {
     Unpacked(usize),
     Line(usize),
@@ -41,6 +43,7 @@ impl Default for Unpacker {
 }
 
 impl Unpacker {
+    /// Internal unpacking function.
     fn unpack_byte(
         &mut self,
         byte: u8,
@@ -73,7 +76,7 @@ impl Unpacker {
             UnpackerInternalState::Disabled => {
                 // If a normal new line.
                 // Return the line for further processing.
-                writer.write(&[byte])?;
+                writer.write_all(&[byte])?;
                 if byte == 10 {
                     Ok(UnpackerState::Line(1))
                 } else {
@@ -89,12 +92,12 @@ impl Unpacker {
                 match (most, least) {
                     // \n\n packed byte. Just return one \n
                     (10, 10) => {
-                        writer.write(&[10])?;
+                        writer.write_all(&[10])?;
                         Ok(UnpackerState::Line(1))
                     }
                     // most is a full width byte
                     (0, 1..) => {
-                        writer.write(&[least])?;
+                        writer.write_all(&[least])?;
                         self.state = UnpackerInternalState::RightFullWidthByte;
                         if least == 10 {
                             Ok(UnpackerState::Line(1))
@@ -116,7 +119,7 @@ impl Unpacker {
                     }
                     // Two unpacked packable bytes.
                     (most, least) => {
-                        writer.write(&[least, most])?;
+                        writer.write_all(&[least, most])?;
                         if most == 10 {
                             Ok(UnpackerState::Line(2))
                         } else {
@@ -132,12 +135,12 @@ impl Unpacker {
             }
             UnpackerInternalState::FirstCommandByte => {
                 self.state = UnpackerInternalState::RightFullWidthByte;
-                writer.write(&[byte])?;
+                writer.write_all(&[byte])?;
                 Ok(UnpackerState::Unpacked(1))
             }
             UnpackerInternalState::RightFullWidthByte => {
                 self.state = UnpackerInternalState::Enabled;
-                writer.write(&[byte])?;
+                writer.write_all(&[byte])?;
                 if byte == 10 {
                     Ok(UnpackerState::Line(1))
                 } else {
@@ -146,7 +149,7 @@ impl Unpacker {
             }
             UnpackerInternalState::LeftFullWidthByte => {
                 self.state = UnpackerInternalState::Enabled;
-                writer.write(&[byte, self.held_back])?;
+                writer.write_all(&[byte, self.held_back])?;
                 if self.held_back == 10 {
                     Ok(UnpackerState::Line(2))
                 } else {
@@ -156,6 +159,10 @@ impl Unpacker {
         }
     }
 
+    /// Unpacks a line of `gcode` from the meatpack `reader`. Useful in
+    /// `no_std` where space is limited and you want to operate on each
+    /// line. Note that `writer` is not buffered so you need to decide whether
+    /// you want to provide a buffered writer to the function.
     pub fn unpack_line(
         &mut self,
         reader: &mut impl embedded_io::BufRead,
@@ -186,6 +193,10 @@ impl Unpacker {
         Ok(written)
     }
 
+    /// Unpacks the `gcode` from the meatpack `reader` into the `writer`.
+    /// Note that `writer` is not buffered so you need to decide whether
+    /// you want to provide a buffered writer to the function. The function
+    /// returns the bytes unpacked into `writer`.
     pub fn unpack(
         &mut self,
         reader: &mut impl embedded_io::BufRead,
