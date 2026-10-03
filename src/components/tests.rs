@@ -6,12 +6,12 @@ const SNIPPET: &str = include_str!("../../test_files/snippet.gcode");
 
 #[test]
 fn test_pack_unpack_strip_comments_false() {
-    let mut packer = Packer::new(false, false);
+    let packer = Packer::new(false, false);
     let mut packed: Vec<u8> = Vec::new();
 
     let _written = packer.pack(&mut SNIPPET.as_bytes(), &mut packed).unwrap();
 
-    let mut unpacker = Unpacker::default();
+    let unpacker = Unpacker::default();
     let mut unpacked: Vec<u8> = Vec::new();
 
     let _written = unpacker
@@ -23,15 +23,14 @@ fn test_pack_unpack_strip_comments_false() {
     assert_eq!(SNIPPET, unpacked)
 }
 
-/*
 #[test]
 fn test_pack_unpack_strip_comments_true() {
-    let mut packer = Packer::new(true, false);
+    let packer = Packer::new(true, false);
     let mut packed: Vec<u8> = Vec::new();
 
     let _written = packer.pack(&mut SNIPPET.as_bytes(), &mut packed).unwrap();
 
-    let mut unpacker = Unpacker::default();
+    let unpacker = Unpacker::default();
     let mut unpacked: Vec<u8> = Vec::new();
 
     let _written = unpacker
@@ -52,4 +51,3 @@ M204 P4000 R1200 T4000
 
     assert_eq!(expected, unpacked.as_str())
 }
-*/

@@ -2,13 +2,13 @@ use meatpack::{Packer, Unpacker};
 
 fn main() {
     let gcode = include_str!("../test_files/snippet.gcode");
-    let mut packer = Packer::new(false, false);
+    let packer = Packer::new(false, false);
     let mut packed: Vec<u8> = Vec::new();
     let _written = packer.pack(&mut gcode.as_bytes(), &mut packed).unwrap();
     println!("{gcode}");
 
     let mut reader: &[u8] = packed.as_slice();
-    let mut unpacker = Unpacker::default();
+    let unpacker = Unpacker::default();
     let mut unpacked: Vec<u8> = Vec::new();
     let _written = unpacker.unpack(&mut reader, &mut unpacked).unwrap();
     let s = String::from_utf8(unpacked).expect("Should be valid ASCII");

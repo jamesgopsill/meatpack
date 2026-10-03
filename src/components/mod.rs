@@ -1,4 +1,3 @@
-pub(crate) mod emit;
 pub(crate) mod meat;
 pub(crate) mod pack;
 #[cfg(test)]

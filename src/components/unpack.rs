@@ -1,7 +1,4 @@
-use crate::components::{
-    emit::Emit,
-    meat::{Command, Error, Pack, determine_command, is_signal_byte},
-};
+use crate::components::meat::{Command, Error, Pack, determine_command, is_signal_byte};
 
 /// A list of state the Unpacker struct can exist in.
 #[derive(Debug)]
@@ -19,7 +16,8 @@ enum UnpackerState {
 pub struct Unpacker {
     state: UnpackerState,
     strip_whitespace: bool,
-    held_back: u8,
+    held_back: Option<u8>,
+    buf: [u8; 3],
 }
 
 impl Default for Unpacker {
@@ -28,32 +26,46 @@ impl Default for Unpacker {
         Self {
             state: UnpackerState::Disabled,
             strip_whitespace: false,
-            held_back: 0,
+            held_back: None,
+            buf: [0u8; 3],
         }
     }
 }
 
 impl Unpacker {
+    fn return_slice(
+        &mut self,
+        s: &[u8],
+    ) -> &[u8] {
+        self.buf[..s.len()].copy_from_slice(s);
+        &self.buf[..s.len()]
+    }
+
+    fn return_empty_slice(&self) -> &[u8] {
+        static EMPTY: [u8; 0] = [];
+        &EMPTY
+    }
+
     /// Internal unpacking function.
     fn unpack_byte(
         &mut self,
         byte: u8,
-    ) -> Result<Emit, Error> {
+    ) -> Result<&[u8], Error> {
         // First check if it is a signal byte
         // and handle the scenarios.
         if is_signal_byte(byte) {
             match self.state {
                 UnpackerState::FirstCommandByte => {
                     self.state = UnpackerState::SecondCommandByte;
-                    return Ok(Emit::NONE);
+                    return Ok(self.return_empty_slice());
                 }
                 UnpackerState::Disabled => {
                     self.state = UnpackerState::FirstCommandByte;
-                    return Ok(Emit::NONE);
+                    return Ok(self.return_empty_slice());
                 }
                 UnpackerState::Enabled => {
                     self.state = UnpackerState::FirstCommandByte;
-                    return Ok(Emit::NONE);
+                    return Ok(self.return_empty_slice());
                 }
                 _ => {
                     return Err(Error::InvalidState);
@@ -66,7 +78,7 @@ impl Unpacker {
             UnpackerState::Disabled => {
                 // If a normal new line.
                 // Return the line for further processing.
-                Ok(Emit::one(byte))
+                Ok(self.return_slice(&[byte]))
             }
             UnpackerState::Enabled => {
                 let (most, least) = byte.unpack(self.strip_whitespace);
@@ -76,44 +88,45 @@ impl Unpacker {
                 // fullwidth byte.
                 match (most, least) {
                     // \n\n packed byte. Just return one \n
-                    (10, 10) => Ok(Emit::one(10)),
+                    (10, 10) => Ok(self.return_slice(&[10])),
                     // most is a full width byte
                     (0, 1..) => {
                         self.state = UnpackerState::RightFullWidthByte;
-                        Ok(Emit::one(least))
+                        Ok(self.return_slice(&[least]))
                     }
                     // least is a full width byte
                     (1.., 0) => {
                         // Note. need to wait for the next byte to then insert
                         // them in the right order.
                         self.state = UnpackerState::LeftFullWidthByte;
-                        self.held_back = most;
-                        Ok(Emit::NONE)
+                        self.held_back = Some(most);
+                        Ok(self.return_empty_slice())
                     }
                     // Should be dealt with by the command bytes section.
                     (0, 0) => {
                         unreachable!();
                     }
                     // Two unpacked packable bytes.
-                    (most, least) => Ok(Emit::two(least, most)),
+                    (most, least) => Ok(self.return_slice(&[least, most])),
                 }
             }
             UnpackerState::SecondCommandByte => {
                 let cmd = determine_command(byte)?;
                 self.handle_command(cmd);
-                Ok(Emit::NONE)
+                Ok(self.return_empty_slice())
             }
             UnpackerState::FirstCommandByte => {
                 self.state = UnpackerState::RightFullWidthByte;
-                Ok(Emit::one(byte))
+                Ok(self.return_slice(&[byte]))
             }
             UnpackerState::RightFullWidthByte => {
                 self.state = UnpackerState::Enabled;
-                Ok(Emit::one(byte))
+                Ok(self.return_slice(&[byte]))
             }
             UnpackerState::LeftFullWidthByte => {
                 self.state = UnpackerState::Enabled;
-                Ok(Emit::two(byte, self.held_back))
+                let held_back = self.held_back.take().unwrap();
+                Ok(self.return_slice(&[byte, held_back]))
             }
         }
     }
@@ -135,7 +148,6 @@ impl Unpacker {
             }
             for (i, byte) in buf.iter().copied().enumerate() {
                 let emitted = self.unpack_byte(byte)?;
-                let emitted = emitted.as_slice();
                 writer.write_all(emitted)?;
                 // Did we emit the end of a line?
                 if emitted.last().is_some_and(|&b| b == b'\n') {
@@ -170,7 +182,6 @@ impl Unpacker {
             }
             for (i, byte) in buf.iter().copied().enumerate() {
                 let emitted = self.unpack_byte(byte)?;
-                let emitted = emitted.as_slice();
                 writer.write_all(emitted).await?;
                 // Did we emit the end of a line?
                 if emitted.last().is_some_and(|&b| b == b'\n') {
@@ -193,7 +204,7 @@ impl Unpacker {
     /// you want to provide a buffered writer to the function. The function
     /// returns the bytes unpacked into `writer`.
     pub fn unpack(
-        &mut self,
+        mut self,
         reader: &mut impl embedded_io::BufRead,
         writer: &mut impl embedded_io::Write,
     ) -> Result<usize, Error> {
@@ -205,7 +216,6 @@ impl Unpacker {
             }
             for byte in buf.iter().copied() {
                 let emitted = self.unpack_byte(byte)?;
-                let emitted = emitted.as_slice();
                 writer.write_all(emitted)?;
                 written += emitted.len()
             }
@@ -221,7 +231,7 @@ impl Unpacker {
     /// you want to provide a buffered writer to the function. The function
     /// returns the bytes unpacked into `writer`.
     pub async fn unpack_async(
-        &mut self,
+        mut self,
         reader: &mut impl embedded_io_async::BufRead,
         writer: &mut impl embedded_io_async::Write,
     ) -> Result<usize, Error> {
@@ -233,7 +243,6 @@ impl Unpacker {
             }
             for byte in buf.iter().copied() {
                 let emitted = self.unpack_byte(byte)?;
-                let emitted = emitted.as_slice();
                 writer.write_all(emitted).await?;
                 written += emitted.len()
             }

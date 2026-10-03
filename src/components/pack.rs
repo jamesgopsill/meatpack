@@ -1,4 +1,3 @@
-use crate::components::emit::Emit;
 use crate::components::meat::{
     COMMENT_START_BYTE, Error, FULLWIDTH_BYTE, LINEFEED_BYTE, Pack, PackTuple, forward_lookup,
 };
@@ -12,6 +11,7 @@ pub struct Packer {
     strip_whitespace: bool,
     strip_comments: bool,
     comment_flag: bool,
+    buf: [u8; 3],
 }
 
 impl Default for Packer {
@@ -23,6 +23,7 @@ impl Default for Packer {
             strip_whitespace: false,
             strip_comments: true,
             comment_flag: false,
+            buf: [0u8; 3],
         }
     }
 }
@@ -39,7 +40,21 @@ impl Packer {
             strip_whitespace,
             strip_comments,
             comment_flag: false,
+            buf: [0u8; 3],
         }
+    }
+
+    fn return_slice(
+        &mut self,
+        s: &[u8],
+    ) -> &[u8] {
+        self.buf[..s.len()].copy_from_slice(s);
+        &self.buf[..s.len()]
+    }
+
+    fn return_empty_slice(&self) -> &[u8] {
+        static EMPTY: [u8; 0] = [];
+        &EMPTY
     }
 
     /// This is an internal function the works out what to do
@@ -47,10 +62,10 @@ impl Packer {
     fn pack_byte(
         &mut self,
         byte: u8,
-    ) -> Result<Emit, Error> {
+    ) -> Result<&[u8], Error> {
         // Ignore whitespace if we have been instructed to do so.
         if self.strip_whitespace && matches!(byte, b' ' | b'\t') {
-            return Ok(Emit::NONE);
+            return Ok(self.return_empty_slice());
         }
         // Check if strip comments is active and ignore
         if self.strip_comments {
@@ -61,7 +76,7 @@ impl Packer {
                 self.comment_flag = false;
             }
             if self.comment_flag {
-                return Ok(Emit::NONE);
+                return Ok(self.return_empty_slice());
             }
         }
 
@@ -80,7 +95,7 @@ impl Packer {
                 self.least = None;
                 self.fullwidth = None;
                 // OPTION: strip empty lines?
-                Ok(Emit::one(packed_byte))
+                Ok(self.return_slice(&[packed_byte]))
             }
             // Start of a new byte to pack.
             (None, b) => match b.pack(self.strip_whitespace) {
@@ -88,13 +103,13 @@ impl Packer {
                 Some(least) => {
                     self.least = Some(least);
                     self.fullwidth = None;
-                    Ok(Emit::NONE)
+                    Ok(self.return_empty_slice())
                 }
                 // Fullwidth byte
                 None => {
                     self.least = Some(0b1111);
                     self.fullwidth = Some(b);
-                    Ok(Emit::NONE)
+                    Ok(self.return_empty_slice())
                 }
             },
             // fullwidth + \n
@@ -104,7 +119,8 @@ impl Packer {
                     .expect(r"Expected \n to return 0b0000_1100");
                 let packed_byte = (most, FULLWIDTH_BYTE).pack()?;
                 self.least = None;
-                Ok(Emit::two(packed_byte, self.fullwidth.take().unwrap()))
+                let fullwidth = self.fullwidth.take().unwrap();
+                Ok(self.return_slice(&[packed_byte, fullwidth]))
             }
             // Full width + some other b byte that is not a \n
             (Some(0b1111), b) => match forward_lookup(b, self.strip_whitespace) {
@@ -112,7 +128,8 @@ impl Packer {
                 Some(most) => {
                     let packed_byte = (most, FULLWIDTH_BYTE).pack()?;
                     self.least = None;
-                    Ok(Emit::two(packed_byte, self.fullwidth.take().unwrap()))
+                    let fullwidth = self.fullwidth.take().unwrap();
+                    Ok(self.return_slice(&[packed_byte, fullwidth]))
                 }
                 // Fullwidth byte
                 None => {
@@ -120,7 +137,8 @@ impl Packer {
                     // readability.
                     let packed_byte = (FULLWIDTH_BYTE, FULLWIDTH_BYTE).pack()?;
                     self.least = None;
-                    Ok(Emit::three(packed_byte, self.fullwidth.take().unwrap(), b))
+                    let fullwidth = self.fullwidth.take().unwrap();
+                    Ok(self.return_slice(&[packed_byte, fullwidth, b]))
                 }
             },
             // Some packable least byte with a \n most.
@@ -131,7 +149,7 @@ impl Packer {
                 let packed_byte = (most, least).pack()?;
                 self.least = None;
                 self.fullwidth = None;
-                Ok(Emit::one(packed_byte))
+                Ok(self.return_slice(&[packed_byte]))
             }
             // least is packable + whatever b is but not a \n
             (Some(least), b) => match b.pack(self.strip_whitespace) {
@@ -140,14 +158,14 @@ impl Packer {
                     let packed_byte = (most, least).pack()?;
                     self.least = None;
                     self.fullwidth = None;
-                    Ok(Emit::one(packed_byte))
+                    Ok(self.return_slice(&[packed_byte]))
                 }
                 // Fullwidth byte
                 None => {
                     let packed_byte = (FULLWIDTH_BYTE, least).pack()?;
                     self.least = None;
                     self.fullwidth = None;
-                    Ok(Emit::two(packed_byte, b))
+                    Ok(self.return_slice(&[packed_byte, b]))
                 }
             },
         }
@@ -158,7 +176,7 @@ impl Packer {
     /// it is recommended to use a `BufWriter` or `buffered-io` on `std` and `no_std`,
     /// respectively.
     pub fn pack(
-        &mut self,
+        mut self,
         reader: &mut impl embedded_io::BufRead,
         writer: &mut impl embedded_io::Write,
     ) -> Result<usize, Error> {
@@ -178,7 +196,6 @@ impl Packer {
             }
             for &byte in buf {
                 let emitted = self.pack_byte(byte)?;
-                let emitted = emitted.as_slice();
                 writer.write_all(emitted)?;
                 written += emitted.len();
             }
@@ -196,7 +213,7 @@ impl Packer {
     /// it is recommended to use a `BufWriter` or `buffered-io` on `std` and `no_std`,
     /// respectively.
     pub async fn pack_async(
-        &mut self,
+        mut self,
         reader: &mut impl embedded_io_async::BufRead,
         writer: &mut impl embedded_io_async::Write,
     ) -> Result<usize, Error> {
@@ -216,7 +233,6 @@ impl Packer {
             }
             for &byte in buf {
                 let emitted = self.pack_byte(byte)?;
-                let emitted = emitted.as_slice();
                 writer.write_all(emitted).await?;
                 written += emitted.len();
             }

@@ -12,7 +12,7 @@ fn main() {
 
     // Initiliase the packer with buffer size depending
     // on your application
-    let mut unpacker = Unpacker::default();
+    let unpacker = Unpacker::default();
 
     let mut unpacked: Vec<u8> = Vec::new();
     let _written = unpacker

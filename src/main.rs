@@ -56,14 +56,14 @@ fn main() -> Result<(), CliError> {
         } => {
             let mut reader = open_input(input)?;
             let mut writer = open_output(cli.output.as_deref(), cli.force)?;
-            let mut packer = Packer::new(*strip_comments, *strip_whitespace);
+            let packer = Packer::new(*strip_comments, *strip_whitespace);
             let written = packer.pack(&mut reader, &mut writer)?;
             eprintln!("Packed {written} bytes");
         }
         Command::Unpack { input } => {
             let mut reader = open_input(input)?;
             let mut writer = open_output(cli.output.as_deref(), cli.force)?;
-            let mut unpacker = Unpacker::default();
+            let unpacker = Unpacker::default();
             let written = unpacker.unpack(&mut reader, &mut writer)?;
             eprintln!("Unpacked {written} bytes");
         }

@@ -9,7 +9,7 @@ fn main() {
 
     // Initiliase the packer with buffer size depending
     // on your application
-    let mut packer = Packer::new(false, false);
+    let packer = Packer::new(false, false);
     let mut meat: Vec<u8> = vec![];
 
     // Feed in the bytes as you receive them and
@@ -21,7 +21,7 @@ fn main() {
     println!("## OUT ##");
 
     // Now we create an unpacker to unpack the meatpacked data.
-    let mut unpacker = Unpacker::default();
+    let unpacker = Unpacker::default();
 
     // Imagine receiving the bytes from some I/O and we want
     // to construct gcode lines and deal with them as we form them.
