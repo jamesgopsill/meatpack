@@ -11,7 +11,7 @@ static GCODE: &[u8] = include_bytes!("../../../test_files/snippet.gcode");
 fn main() -> ! {
     let _p = embassy_rp::init(Default::default());
 
-    let mut packer = Packer::new(false, false);
+    let packer = Packer::new(false, false);
     let mut reader: &[u8] = GCODE;
     let mut packed: [u8; 256] = [0u8; 256];
     let mut writer: &mut [u8] = &mut packed;
@@ -30,7 +30,7 @@ fn main() -> ! {
     let mut unpacked: [u8; 256] = [0u8; 256];
     let mut writer: &mut [u8] = &mut unpacked;
 
-    let mut unpacker = Unpacker::default();
+    let unpacker = Unpacker::default();
     let unpacker_written = unpacker.unpack(&mut reader, &mut writer).unwrap();
 
     info!(
