@@ -1,5 +1,3 @@
-use thiserror::Error;
-
 pub static SIGNAL_BYTE: u8 = 255;
 pub static PACKING_ENABLED_BYTE: u8 = 251;
 pub static ENABLE_NO_SPACES: u8 = 247;
@@ -46,34 +44,26 @@ impl Pack for u8 {
 
 /// Enable packing of items (u4s) into a meatpacked u8.
 pub trait PackTuple {
-    fn pack(&self) -> Result<u8, MeatPackError>;
+    fn pack(&self) -> Result<u8, Error>;
 }
 
 impl PackTuple for (u8, u8) {
-    fn pack(&self) -> Result<u8, MeatPackError> {
+    fn pack(&self) -> Result<u8, Error> {
         if self.0 > 15u8 {
-            return Err(MeatPackError::InvalidByte(self.0));
+            return Err(Error::InvalidByte(self.0));
         }
         if self.1 > 15u8 {
-            return Err(MeatPackError::InvalidByte(self.1));
+            return Err(Error::InvalidByte(self.1));
         }
         let packed = self.0 << 4;
         Ok(packed ^ self.1)
     }
 }
 
-/// Used in the Packer and Unpacker to inform the
-/// user whether a line has been omitted or more
-/// bytes are required.
-pub enum MeatPackResult<'a> {
-    WaitingForNextByte,
-    Line(&'a [u8]),
-}
-
 /// A set of possible error codes from the MeatPack crate.
-#[derive(Debug, Error)]
+#[derive(Debug, thiserror::Error)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub enum MeatPackError {
+pub enum Error {
     #[error("Invalid byte: Recevied: {0}")]
     InvalidByte(u8),
     #[error("The packer is in an invalid state.")]
@@ -93,15 +83,15 @@ pub enum MeatPackError {
 }
 
 // Convert any embedded-io error automatically with `?`
-impl<E: embedded_io::Error> From<E> for MeatPackError {
+impl<E: embedded_io::Error> From<E> for Error {
     fn from(err: E) -> Self {
-        MeatPackError::Io(err.kind())
+        Error::Io(err.kind())
     }
 }
 
 /// An enum detailing all the available Meatpack commands.
 #[derive(Debug)]
-pub enum MeatPackCommand {
+pub enum Command {
     PackingEnabled,
     PackingDisabled,
     ResetAll,
@@ -126,16 +116,16 @@ pub enum MeatPackCommand {
 ///
 /// References
 /// - <https://github.com/prusa3d/libbgcode/blob/main/src/LibBGCode/binarize/meatpack.cpp>
-pub const fn determine_command(byte: u8) -> Result<MeatPackCommand, MeatPackError> {
+pub const fn determine_command(byte: u8) -> Result<Command, Error> {
     match byte {
-        246 => Ok(MeatPackCommand::NoSpacesDisabled),
-        247 => Ok(MeatPackCommand::NoSpacesEnabled),
-        248 => Ok(MeatPackCommand::QueryConfig),
-        249 => Ok(MeatPackCommand::ResetAll),
-        250 => Ok(MeatPackCommand::PackingDisabled),
-        251 => Ok(MeatPackCommand::PackingEnabled),
-        255 => Ok(MeatPackCommand::SignalByte),
-        b => Err(MeatPackError::InvalidCommandByte(b)),
+        246 => Ok(Command::NoSpacesDisabled),
+        247 => Ok(Command::NoSpacesEnabled),
+        248 => Ok(Command::QueryConfig),
+        249 => Ok(Command::ResetAll),
+        250 => Ok(Command::PackingDisabled),
+        251 => Ok(Command::PackingEnabled),
+        255 => Ok(Command::SignalByte),
+        b => Err(Error::InvalidCommandByte(b)),
     }
 }
 

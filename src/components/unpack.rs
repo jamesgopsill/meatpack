@@ -1,13 +1,11 @@
-use crate::components::meat::{
-    MeatPackCommand, MeatPackError, Pack, determine_command, is_signal_byte,
+use crate::components::{
+    emit::Emit,
+    meat::{Command, Error, Pack, determine_command, is_signal_byte},
 };
-
-#[cfg(feature = "std")]
-extern crate std;
 
 /// A list of state the Unpacker struct can exist in.
 #[derive(Debug)]
-enum UnpackerInternalState {
+enum UnpackerState {
     FirstCommandByte,
     SecondCommandByte,
     RightFullWidthByte,
@@ -16,17 +14,10 @@ enum UnpackerInternalState {
     Disabled,
 }
 
-/// Reports whether we have unpacked some bytes or
-/// reached a new line.
-pub enum UnpackerState {
-    Unpacked(usize),
-    Line(usize),
-}
-
 /// A  struct for that unpacks bytes and emits
 /// lines of gcode.
 pub struct Unpacker {
-    state: UnpackerInternalState,
+    state: UnpackerState,
     strip_whitespace: bool,
     held_back: u8,
 }
@@ -35,7 +26,7 @@ impl Default for Unpacker {
     /// The default implementation of the unpacker.
     fn default() -> Self {
         Self {
-            state: UnpackerInternalState::Disabled,
+            state: UnpackerState::Disabled,
             strip_whitespace: false,
             held_back: 0,
         }
@@ -47,43 +38,37 @@ impl Unpacker {
     fn unpack_byte(
         &mut self,
         byte: u8,
-        writer: &mut impl embedded_io::Write,
-    ) -> Result<UnpackerState, MeatPackError> {
+    ) -> Result<Emit, Error> {
         // First check if it is a signal byte
         // and handle the scenarios.
         if is_signal_byte(byte) {
             match self.state {
-                UnpackerInternalState::FirstCommandByte => {
-                    self.state = UnpackerInternalState::SecondCommandByte;
-                    return Ok(UnpackerState::Unpacked(0));
+                UnpackerState::FirstCommandByte => {
+                    self.state = UnpackerState::SecondCommandByte;
+                    return Ok(Emit::NONE);
                 }
-                UnpackerInternalState::Disabled => {
-                    self.state = UnpackerInternalState::FirstCommandByte;
-                    return Ok(UnpackerState::Unpacked(0));
+                UnpackerState::Disabled => {
+                    self.state = UnpackerState::FirstCommandByte;
+                    return Ok(Emit::NONE);
                 }
-                UnpackerInternalState::Enabled => {
-                    self.state = UnpackerInternalState::FirstCommandByte;
-                    return Ok(UnpackerState::Unpacked(0));
+                UnpackerState::Enabled => {
+                    self.state = UnpackerState::FirstCommandByte;
+                    return Ok(Emit::NONE);
                 }
                 _ => {
-                    return Err(MeatPackError::InvalidState);
+                    return Err(Error::InvalidState);
                 }
             }
         }
 
         // Handle non signal scenarios.
         match self.state {
-            UnpackerInternalState::Disabled => {
+            UnpackerState::Disabled => {
                 // If a normal new line.
                 // Return the line for further processing.
-                writer.write_all(&[byte])?;
-                if byte == 10 {
-                    Ok(UnpackerState::Line(1))
-                } else {
-                    Ok(UnpackerState::Unpacked(1))
-                }
+                Ok(Emit::one(byte))
             }
-            UnpackerInternalState::Enabled => {
+            UnpackerState::Enabled => {
                 let (most, least) = byte.unpack(self.strip_whitespace);
 
                 // most, least
@@ -91,70 +76,44 @@ impl Unpacker {
                 // fullwidth byte.
                 match (most, least) {
                     // \n\n packed byte. Just return one \n
-                    (10, 10) => {
-                        writer.write_all(&[10])?;
-                        Ok(UnpackerState::Line(1))
-                    }
+                    (10, 10) => Ok(Emit::one(10)),
                     // most is a full width byte
                     (0, 1..) => {
-                        writer.write_all(&[least])?;
-                        self.state = UnpackerInternalState::RightFullWidthByte;
-                        if least == 10 {
-                            Ok(UnpackerState::Line(1))
-                        } else {
-                            Ok(UnpackerState::Unpacked(1))
-                        }
+                        self.state = UnpackerState::RightFullWidthByte;
+                        Ok(Emit::one(least))
                     }
                     // least is a full width byte
                     (1.., 0) => {
                         // Note. need to wait for the next byte to then insert
                         // them in the right order.
-                        self.state = UnpackerInternalState::LeftFullWidthByte;
+                        self.state = UnpackerState::LeftFullWidthByte;
                         self.held_back = most;
-                        Ok(UnpackerState::Unpacked(0))
+                        Ok(Emit::NONE)
                     }
                     // Should be dealt with by the command bytes section.
                     (0, 0) => {
                         unreachable!();
                     }
                     // Two unpacked packable bytes.
-                    (most, least) => {
-                        writer.write_all(&[least, most])?;
-                        if most == 10 {
-                            Ok(UnpackerState::Line(2))
-                        } else {
-                            Ok(UnpackerState::Unpacked(2))
-                        }
-                    }
+                    (most, least) => Ok(Emit::two(least, most)),
                 }
             }
-            UnpackerInternalState::SecondCommandByte => {
+            UnpackerState::SecondCommandByte => {
                 let cmd = determine_command(byte)?;
                 self.handle_command(cmd);
-                Ok(UnpackerState::Unpacked(0))
+                Ok(Emit::NONE)
             }
-            UnpackerInternalState::FirstCommandByte => {
-                self.state = UnpackerInternalState::RightFullWidthByte;
-                writer.write_all(&[byte])?;
-                Ok(UnpackerState::Unpacked(1))
+            UnpackerState::FirstCommandByte => {
+                self.state = UnpackerState::RightFullWidthByte;
+                Ok(Emit::one(byte))
             }
-            UnpackerInternalState::RightFullWidthByte => {
-                self.state = UnpackerInternalState::Enabled;
-                writer.write_all(&[byte])?;
-                if byte == 10 {
-                    Ok(UnpackerState::Line(1))
-                } else {
-                    Ok(UnpackerState::Unpacked(1))
-                }
+            UnpackerState::RightFullWidthByte => {
+                self.state = UnpackerState::Enabled;
+                Ok(Emit::one(byte))
             }
-            UnpackerInternalState::LeftFullWidthByte => {
-                self.state = UnpackerInternalState::Enabled;
-                writer.write_all(&[byte, self.held_back])?;
-                if self.held_back == 10 {
-                    Ok(UnpackerState::Line(2))
-                } else {
-                    Ok(UnpackerState::Unpacked(2))
-                }
+            UnpackerState::LeftFullWidthByte => {
+                self.state = UnpackerState::Enabled;
+                Ok(Emit::two(byte, self.held_back))
             }
         }
     }
@@ -167,7 +126,7 @@ impl Unpacker {
         &mut self,
         reader: &mut impl embedded_io::BufRead,
         writer: &mut impl embedded_io::Write,
-    ) -> Result<usize, MeatPackError> {
+    ) -> Result<usize, Error> {
         let mut written: usize = 0;
         loop {
             let buf = reader.fill_buf()?;
@@ -175,16 +134,80 @@ impl Unpacker {
                 break;
             }
             for (i, byte) in buf.iter().copied().enumerate() {
-                match self.unpack_byte(byte, writer)? {
-                    UnpackerState::Unpacked(s) => written += s,
-                    UnpackerState::Line(s) => {
-                        written += s;
-                        let read = i + 1;
-                        reader.consume(read);
-                        writer.flush()?;
-                        return Ok(written);
-                    }
-                };
+                let emitted = self.unpack_byte(byte)?;
+                let emitted = emitted.as_slice();
+                writer.write_all(emitted)?;
+                // Did we emit the end of a line?
+                if emitted.last().is_some_and(|&b| b == b'\n') {
+                    written += emitted.len();
+                    let read = i + 1;
+                    reader.consume(read);
+                    writer.flush()?;
+                    return Ok(written);
+                }
+            }
+            let read = buf.len();
+            reader.consume(read);
+        }
+        writer.flush()?;
+        Ok(written)
+    }
+
+    /// Unpacks a line of `gcode` from the meatpack `reader`. Useful in
+    /// `no_std` where space is limited and you want to operate on each
+    /// line. Note that `writer` is not buffered so you need to decide whether
+    /// you want to provide a buffered writer to the function.
+    pub async fn unpack_line_async(
+        &mut self,
+        reader: &mut impl embedded_io_async::BufRead,
+        writer: &mut impl embedded_io_async::Write,
+    ) -> Result<usize, Error> {
+        let mut written: usize = 0;
+        loop {
+            let buf = reader.fill_buf().await?;
+            if buf.is_empty() {
+                break;
+            }
+            for (i, byte) in buf.iter().copied().enumerate() {
+                let emitted = self.unpack_byte(byte)?;
+                let emitted = emitted.as_slice();
+                writer.write_all(emitted).await?;
+                // Did we emit the end of a line?
+                if emitted.last().is_some_and(|&b| b == b'\n') {
+                    written += emitted.len();
+                    let read = i + 1;
+                    reader.consume(read);
+                    writer.flush().await?;
+                    return Ok(written);
+                }
+            }
+            let read = buf.len();
+            reader.consume(read);
+        }
+        writer.flush().await?;
+        Ok(written)
+    }
+
+    /// Unpacks the `gcode` from the meatpack `reader` into the `writer`.
+    /// Note that `writer` is not buffered so you need to decide whether
+    /// you want to provide a buffered writer to the function. The function
+    /// returns the bytes unpacked into `writer`.
+    pub fn unpack(
+        &mut self,
+        reader: &mut impl embedded_io::BufRead,
+        writer: &mut impl embedded_io::Write,
+    ) -> Result<usize, Error> {
+        let mut written: usize = 0;
+        loop {
+            let buf = reader.fill_buf()?;
+            if buf.is_empty() {
+                break;
+            }
+            for byte in buf.iter().copied() {
+                let emitted = self.unpack_byte(byte)?;
+                let emitted = emitted.as_slice();
+                writer.write_all(emitted)?;
+                written += emitted.len()
             }
             let read = buf.len();
             reader.consume(read);
@@ -197,27 +220,27 @@ impl Unpacker {
     /// Note that `writer` is not buffered so you need to decide whether
     /// you want to provide a buffered writer to the function. The function
     /// returns the bytes unpacked into `writer`.
-    pub fn unpack(
+    pub async fn unpack_async(
         &mut self,
-        reader: &mut impl embedded_io::BufRead,
-        writer: &mut impl embedded_io::Write,
-    ) -> Result<usize, MeatPackError> {
+        reader: &mut impl embedded_io_async::BufRead,
+        writer: &mut impl embedded_io_async::Write,
+    ) -> Result<usize, Error> {
         let mut written: usize = 0;
         loop {
-            let buf = reader.fill_buf()?;
+            let buf = reader.fill_buf().await?;
             if buf.is_empty() {
                 break;
             }
             for byte in buf.iter().copied() {
-                match self.unpack_byte(byte, writer)? {
-                    UnpackerState::Unpacked(s) => written += s,
-                    UnpackerState::Line(s) => written += s,
-                };
+                let emitted = self.unpack_byte(byte)?;
+                let emitted = emitted.as_slice();
+                writer.write_all(emitted).await?;
+                written += emitted.len()
             }
             let read = buf.len();
             reader.consume(read);
         }
-        writer.flush()?;
+        writer.flush().await?;
         Ok(written)
     }
 
@@ -225,29 +248,29 @@ impl Unpacker {
     /// exist in the meatpack spec.
     fn handle_command(
         &mut self,
-        cmd: MeatPackCommand,
+        cmd: Command,
     ) {
         match cmd {
-            MeatPackCommand::PackingEnabled => {
-                self.state = UnpackerInternalState::Enabled;
+            Command::PackingEnabled => {
+                self.state = UnpackerState::Enabled;
             }
-            MeatPackCommand::PackingDisabled => {
-                self.state = UnpackerInternalState::Disabled;
+            Command::PackingDisabled => {
+                self.state = UnpackerState::Disabled;
             }
-            MeatPackCommand::ResetAll => {
-                self.state = UnpackerInternalState::Disabled;
+            Command::ResetAll => {
+                self.state = UnpackerState::Disabled;
                 self.strip_whitespace = false;
             }
-            MeatPackCommand::QueryConfig => {}
-            MeatPackCommand::NoSpacesEnabled => {
+            Command::QueryConfig => {}
+            Command::NoSpacesEnabled => {
                 self.strip_whitespace = true;
-                self.state = UnpackerInternalState::Enabled;
+                self.state = UnpackerState::Enabled;
             }
-            MeatPackCommand::NoSpacesDisabled => {
+            Command::NoSpacesDisabled => {
                 self.strip_whitespace = false;
-                self.state = UnpackerInternalState::Enabled;
+                self.state = UnpackerState::Enabled;
             }
-            MeatPackCommand::SignalByte => {}
+            Command::SignalByte => {}
         }
     }
 }

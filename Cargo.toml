@@ -36,6 +36,7 @@ required-features = ["std"]
 thiserror = { version = "2.0.21", default-features = false }
 embedded-io = "0.7.1"
 embedded-io-adapters = { version = "0.7", features = ["std"], optional = true }
+embedded-io-async = "0.7.0"
 defmt = { version = "1", optional = true }
 clap = { version = "4", features = ["derive"], optional = true }
 

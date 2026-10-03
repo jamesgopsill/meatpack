@@ -124,7 +124,7 @@ enum CliError {
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]
-    Pack(#[from] meatpack::MeatPackError),
+    Pack(#[from] meatpack::Error),
 }
 
 impl CliError {

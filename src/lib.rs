@@ -6,8 +6,7 @@ extern crate std;
 
 mod components;
 
-pub use components::meat::MeatPackError;
-pub use components::meat::MeatPackResult;
+pub use components::meat::Error;
 pub use components::meat::{MEATPACK_HEADER, NO_SPACES_COMMAND};
 pub use components::pack::Packer;
 pub use components::unpack::Unpacker;

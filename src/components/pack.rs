@@ -1,22 +1,9 @@
+use crate::components::emit::Emit;
 use crate::components::meat::{
-    COMMENT_START_BYTE, FULLWIDTH_BYTE, LINEFEED_BYTE, MeatPackError, Pack, PackTuple,
-    forward_lookup,
+    COMMENT_START_BYTE, Error, FULLWIDTH_BYTE, LINEFEED_BYTE, Pack, PackTuple, forward_lookup,
 };
 
 use crate::{MEATPACK_HEADER, NO_SPACES_COMMAND};
-
-#[cfg(feature = "std")]
-extern crate std;
-
-/// The packer state is returned after every `pack_byte`
-/// call to inform us whether we have packed a byte,
-/// waiting for another byte or we have a reached a new
-/// line.
-enum PackerState {
-    NewLine(usize),
-    Packed(usize),
-    Pending,
-}
 
 /// `Packer` manages the packing of `gcode` into meatpacked `gcode`.
 pub struct Packer {
@@ -60,11 +47,10 @@ impl Packer {
     fn pack_byte(
         &mut self,
         byte: u8,
-        writer: &mut impl embedded_io::Write,
-    ) -> Result<PackerState, MeatPackError> {
+    ) -> Result<Emit, Error> {
         // Ignore whitespace if we have been instructed to do so.
         if self.strip_whitespace && matches!(byte, b' ' | b'\t') {
-            return Ok(PackerState::Pending);
+            return Ok(Emit::NONE);
         }
         // Check if strip comments is active and ignore
         if self.strip_comments {
@@ -75,7 +61,7 @@ impl Packer {
                 self.comment_flag = false;
             }
             if self.comment_flag {
-                return Ok(PackerState::Pending);
+                return Ok(Emit::NONE);
             }
         }
 
@@ -91,11 +77,10 @@ impl Packer {
                     .pack(self.strip_whitespace)
                     .expect(r"Expect \n to return 0b0000_1100");
                 let packed_byte = (most, least).pack()?;
-                writer.write_all(&[packed_byte])?;
                 self.least = None;
                 self.fullwidth = None;
-                // Should we remove empty lines?
-                Ok(PackerState::NewLine(1))
+                // OPTION: strip empty lines?
+                Ok(Emit::one(packed_byte))
             }
             // Start of a new byte to pack.
             (None, b) => match b.pack(self.strip_whitespace) {
@@ -103,13 +88,13 @@ impl Packer {
                 Some(least) => {
                     self.least = Some(least);
                     self.fullwidth = None;
-                    Ok(PackerState::Pending)
+                    Ok(Emit::NONE)
                 }
                 // Fullwidth byte
                 None => {
                     self.least = Some(0b1111);
                     self.fullwidth = Some(b);
-                    Ok(PackerState::Pending)
+                    Ok(Emit::NONE)
                 }
             },
             // fullwidth + \n
@@ -118,32 +103,24 @@ impl Packer {
                     .pack(self.strip_whitespace)
                     .expect(r"Expected \n to return 0b0000_1100");
                 let packed_byte = (most, FULLWIDTH_BYTE).pack()?;
-                writer.write_all(&[packed_byte, self.fullwidth.unwrap()])?;
                 self.least = None;
-                self.fullwidth = None;
-                Ok(PackerState::NewLine(2))
+                Ok(Emit::two(packed_byte, self.fullwidth.take().unwrap()))
             }
             // Full width + some other b byte that is not a \n
             (Some(0b1111), b) => match forward_lookup(b, self.strip_whitespace) {
                 // Packable byte
                 Some(most) => {
-                    let packed_byte = (most, FULLWIDTH_BYTE)
-                        .pack()
-                        .expect("Should pack as we have provided to two packed chars.");
-                    writer.write_all(&[packed_byte, self.fullwidth.unwrap()])?;
+                    let packed_byte = (most, FULLWIDTH_BYTE).pack()?;
                     self.least = None;
-                    self.fullwidth = None;
-                    Ok(PackerState::Packed(2))
+                    Ok(Emit::two(packed_byte, self.fullwidth.take().unwrap()))
                 }
                 // Fullwidth byte
                 None => {
                     // Equivalent to a SIGNAL BYTE but keeping the function for
                     // readability.
                     let packed_byte = (FULLWIDTH_BYTE, FULLWIDTH_BYTE).pack()?;
-                    writer.write_all(&[packed_byte, self.fullwidth.unwrap(), b])?;
                     self.least = None;
-                    self.fullwidth = None;
-                    Ok(PackerState::Packed(3))
+                    Ok(Emit::three(packed_byte, self.fullwidth.take().unwrap(), b))
                 }
             },
             // Some packable least byte with a \n most.
@@ -152,28 +129,25 @@ impl Packer {
                     .pack(self.strip_whitespace)
                     .expect("Should be packable.");
                 let packed_byte = (most, least).pack()?;
-                writer.write_all(&[packed_byte])?;
                 self.least = None;
                 self.fullwidth = None;
-                Ok(PackerState::NewLine(1))
+                Ok(Emit::one(packed_byte))
             }
             // least is packable + whatever b is but not a \n
             (Some(least), b) => match b.pack(self.strip_whitespace) {
                 // Packable byte
                 Some(most) => {
                     let packed_byte = (most, least).pack()?;
-                    writer.write_all(&[packed_byte])?;
                     self.least = None;
                     self.fullwidth = None;
-                    Ok(PackerState::Packed(1))
+                    Ok(Emit::one(packed_byte))
                 }
                 // Fullwidth byte
                 None => {
                     let packed_byte = (FULLWIDTH_BYTE, least).pack()?;
-                    writer.write_all(&[packed_byte, b])?;
                     self.least = None;
                     self.fullwidth = None;
-                    Ok(PackerState::Packed(2))
+                    Ok(Emit::two(packed_byte, b))
                 }
             },
         }
@@ -187,7 +161,7 @@ impl Packer {
         &mut self,
         reader: &mut impl embedded_io::BufRead,
         writer: &mut impl embedded_io::Write,
-    ) -> Result<usize, MeatPackError> {
+    ) -> Result<usize, Error> {
         let mut written = 0;
 
         writer.write_all(MEATPACK_HEADER.as_slice())?;
@@ -202,18 +176,55 @@ impl Packer {
             if buf.is_empty() {
                 break;
             }
-            for byte in buf.iter().copied() {
-                match self.pack_byte(byte, writer)? {
-                    PackerState::NewLine(size) => written += size,
-                    PackerState::Packed(size) => written += size,
-                    PackerState::Pending => {}
-                }
+            for &byte in buf {
+                let emitted = self.pack_byte(byte)?;
+                let emitted = emitted.as_slice();
+                writer.write_all(emitted)?;
+                written += emitted.len();
             }
             let read = buf.len();
             reader.consume(read);
         }
 
         writer.flush()?;
+
+        Ok(written)
+    }
+
+    /// Packs a `gcode` read stream to meatpacked `gcode` write stream returning
+    /// the number of bytes packed into the writer. The writer is not buffered so
+    /// it is recommended to use a `BufWriter` or `buffered-io` on `std` and `no_std`,
+    /// respectively.
+    pub async fn pack_async(
+        &mut self,
+        reader: &mut impl embedded_io_async::BufRead,
+        writer: &mut impl embedded_io_async::Write,
+    ) -> Result<usize, Error> {
+        let mut written = 0;
+
+        writer.write_all(MEATPACK_HEADER.as_slice()).await?;
+        written += MEATPACK_HEADER.len();
+        if self.strip_whitespace {
+            writer.write_all(NO_SPACES_COMMAND.as_slice()).await?;
+            written += NO_SPACES_COMMAND.len();
+        }
+
+        loop {
+            let buf = reader.fill_buf().await?;
+            if buf.is_empty() {
+                break;
+            }
+            for &byte in buf {
+                let emitted = self.pack_byte(byte)?;
+                let emitted = emitted.as_slice();
+                writer.write_all(emitted).await?;
+                written += emitted.len();
+            }
+            let read = buf.len();
+            reader.consume(read);
+        }
+
+        writer.flush().await?;
 
         Ok(written)
     }
